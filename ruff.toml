@@ -1,0 +1,39 @@
+indent-width   = 4
+line-length    = 88
+target-version = "py313"
+
+[lint]
+  fixable = ["ALL"]
+  ignore = ["PLR2004"]
+  preview = true
+  select = [
+    "B",
+    "C4",
+    "DTZ",
+    "E",
+    "F",
+    "FLY",
+    "FURB",
+    "G",
+    "G",
+    "I",
+    "LOG",
+    "N",
+    "NPY",
+    "PD",
+    "PERF",
+    "PL",
+    "PT",
+    "PTH",
+    "RET",
+    "RUF",
+    "S",
+    "SIM",
+    "UP",
+    "W",
+  ]
+[format]
+  indent-style              = "space"
+  line-ending               = "auto"
+  quote-style               = "double"
+  skip-magic-trailing-comma = false
