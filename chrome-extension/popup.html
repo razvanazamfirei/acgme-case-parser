@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACGME Case Auto-Fill</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ACGME Case Auto-Fill</h1>
+            <p class="subtitle">Automated case entry from Excel exports</p>
+        </header>
+
+        <div id="upload-section" class="section">
+            <h2>Step 1: Upload Case Data</h2>
+            <div class="upload-area">
+                <input type="file" id="fileInput" accept=".json" hidden>
+                <button id="uploadBtn" class="btn btn-primary">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+                        <path d="M10 14V6M10 6L7 9M10 6L13 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M3 15V16C3 17.1046 3.89543 18 5 18H15C16.1046 18 17 17.1046 17 16V15" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Choose JSON File
+                </button>
+                <p id="fileName" class="file-name"></p>
+            </div>
+        </div>
+
+        <div id="cases-section" class="section hidden">
+            <h2>Step 2: Select Case</h2>
+            <div id="casesList" class="cases-list"></div>
+        </div>
+
+        <div id="status-section" class="section hidden">
+            <h2>Status</h2>
+            <div id="statusMessage" class="status-message"></div>
+        </div>
+
+        <div id="help-section" class="section">
+            <details>
+                <summary>How to use</summary>
+                <ol>
+                    <li>Export your cases to JSON using: <code>case-parser input.xlsx output.xlsx --json-export cases.json</code></li>
+                    <li>Navigate to the ACGME case entry page</li>
+                    <li>Upload the JSON file here</li>
+                    <li>Select a case from the list</li>
+                    <li>Click "Fill Form" to auto-populate the fields</li>
+                    <li>Review the filled data and submit manually</li>
+                </ol>
+            </details>
+        </div>
+
+        <footer>
+            <p class="version">v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

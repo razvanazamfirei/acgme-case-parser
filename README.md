@@ -10,6 +10,8 @@ A robust Python tool for processing anesthesia case data from Excel files and co
 - **Data Validation**: Input validation and data quality checks
 - **Excel I/O**: Automatic column sizing and professional output formatting
 - **CLI Interface**: User-friendly command-line interface with helpful options
+- **Web Integration**: JSON export for ACGME web form auto-fill via Chrome extension
+- **Enhanced Validation**: Optional typed domain models with comprehensive validation warnings
 
 ## Installation
 
@@ -55,7 +57,39 @@ case-parser input.xlsx output.xlsx --verbose
 
 # Set logging level
 case-parser input.xlsx output.xlsx --log-level DEBUG
+
+# Use enhanced processor with validation
+case-parser input.xlsx output.xlsx --use-enhanced --validation-report validation.txt
+
+# Export to JSON for ACGME web form integration
+case-parser input.xlsx output.xlsx --json-export cases.json --resident-id "1325527"
 ```
+
+### Web Integration (ACGME Auto-Fill)
+
+Export cases to JSON format for use with the Chrome extension:
+
+```bash
+# Basic JSON export
+case-parser input.xlsx output.xlsx --json-export cases.json
+
+# With resident and program information
+case-parser input.xlsx output.xlsx \
+  --json-export cases.json \
+  --resident-id "1325527" \
+  --program-id "0404121134" \
+  --program-name "University of Pennsylvania Health System Program"
+```
+
+Then use the Chrome extension to auto-fill ACGME case entry forms:
+
+1. Install the Chrome extension from the `chrome-extension/` directory
+2. Navigate to the ACGME case entry page
+3. Upload the JSON file via the extension popup
+4. Select a case and click "Fill Form"
+5. Review and manually submit
+
+See [chrome-extension/README.md](chrome-extension/README.md) for detailed instructions.
 
 ### Column Mapping
 
@@ -78,17 +112,34 @@ The tool automatically maps common column names, but you can override them using
 case-parser/
 ├── src/
 │   └── case_parser/
-│       ├── __init__.py          # Package initialization
-│       ├── models.py            # Data models and configuration
-│       ├── processors.py        # Data processing logic
-│       ├── extractors.py        # Text extraction functions
-│       ├── io.py               # File I/O operations
-│       ├── cli.py              # Command line interface
-│       ├── exceptions.py       # Custom exceptions
-│       └── logging_config.py   # Logging configuration
+│       ├── __init__.py              # Package initialization
+│       ├── models.py                # Data models and configuration
+│       ├── processors.py            # Legacy data processing
+│       ├── enhanced_processor.py    # Enhanced processor with validation
+│       ├── extractors.py            # Text extraction functions
+│       ├── enhanced_extractors.py   # Enhanced extraction with typing
+│       ├── domain.py                # Domain models (typed)
+│       ├── validation.py            # Validation and reporting
+│       ├── io.py                    # File I/O operations
+│       ├── cli.py                   # Command line interface
+│       ├── exceptions.py            # Custom exceptions
+│       ├── logging_config.py        # Logging configuration
+│       ├── acgme_mappings.py        # ACGME field mappings
+│       └── web_exporter.py          # JSON export for web integration
+├── chrome-extension/
+│   ├── manifest.json            # Chrome extension config
+│   ├── popup.html              # Extension popup UI
+│   ├── popup.css               # Popup styling
+│   ├── popup.js                # Popup logic
+│   ├── content.js              # Form filling script
+│   ├── content.css             # Content script styles
+│   ├── icons/                  # Extension icons
+│   └── README.md               # Extension documentation
+├── tests/                      # Unit tests
 ├── main.py                     # Main entry point
 ├── pyproject.toml             # Project configuration
-└── README.md                  # This file
+├── WEB_INTEGRATION_PLAN.md    # Web integration strategy
+└── README.md                   # This file
 ```
 
 ## Data Processing

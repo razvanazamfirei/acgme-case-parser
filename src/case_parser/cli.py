@@ -15,6 +15,7 @@ from .logging_config import setup_logging
 from .models import ColumnMap
 from .processors import CaseProcessor
 from .validation import ValidationReport
+from .web_exporter import WebExporter
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -24,9 +25,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Basic conversion
   %(prog)s input.xlsx output.xlsx
+
+  # With custom sheet and year
   %(prog)s input.xlsx output.xlsx --sheet "Data" --default-year 2024
+
+  # With column overrides
   %(prog)s input.xlsx output.xlsx --col-date "Date of Service" --col-age "Patient Age"
+
+  # Export to JSON for ACGME web form
+  %(prog)s input.xlsx output.xlsx --json-export cases.json --resident-id "1325527"
+
+  # With validation report
+  %(prog)s input.xlsx output.xlsx --use-enhanced --validation-report validation.txt
         """,
     )
 
@@ -63,6 +75,28 @@ Examples:
         "--use-enhanced",
         action="store_true",
         help="Use enhanced processor with typed intermediate representation",
+    )
+
+    # Web export options
+    parser.add_argument(
+        "--json-export",
+        help="Export cases to JSON format for ACGME web form (path to .json file)",
+        metavar="FILE",
+    )
+    parser.add_argument(
+        "--resident-id",
+        help="ACGME resident ID for JSON export",
+        metavar="ID",
+    )
+    parser.add_argument(
+        "--program-id",
+        help="ACGME program ID for JSON export",
+        metavar="ID",
+    )
+    parser.add_argument(
+        "--program-name",
+        help="Program name for JSON export",
+        metavar="NAME",
     )
 
     # Column override options
@@ -108,8 +142,14 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if args.default_year < 1900 or args.default_year > 2100:
         raise ValueError("Default year must be between 1900 and 2100")
 
+    # Validate JSON export arguments
+    if args.json_export:
+        json_path = Path(args.json_export)
+        if not json_path.suffix.lower() == ".json":
+            raise ValueError("JSON export file must have .json extension")
 
-def main() -> None:  # noqa: PLR0912, PLR0915
+
+def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
     """Main entry point."""
     parser = build_arg_parser()
     args = parser.parse_args()
@@ -178,6 +218,28 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         excel_handler.write_excel(
             output_df, args.output_file, fixed_widths={"Original Procedure": 12}
         )
+
+        # Export to JSON if requested
+        if args.json_export:
+            print(f"\nExporting to JSON: {args.json_export}")
+
+            # Build program info
+            program_info = {}
+            if args.program_id:
+                program_info["program_id"] = args.program_id
+            if args.program_name:
+                program_info["program_name"] = args.program_name
+
+            # Create web exporter
+            web_exporter = WebExporter()
+            web_exporter.export_to_json(
+                output_df,
+                args.json_export,
+                resident_id=args.resident_id,
+                program_info=program_info or None,
+            )
+
+            print(f"JSON export saved to: {args.json_export}")
 
         # Print summary
         summary = excel_handler.get_data_summary(output_df)
