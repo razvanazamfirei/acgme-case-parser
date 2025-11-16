@@ -13,10 +13,16 @@ from pandas import DataFrame
 logger = logging.getLogger(__name__)
 
 
-def read_excel(
-    file_path: str | Path, sheet_name: str | int | None = None
-) -> dict[str, DataFrame]:
-    """Read Excel file and return DataFrame."""
+def read_excel(file_path: str | Path, sheet_name: str | int = 0) -> DataFrame:
+    """Read Excel file and return DataFrame.
+
+    Args:
+        file_path: Path to the Excel file
+        sheet_name: Sheet name or index to read (default: first sheet)
+
+    Returns:
+        DataFrame containing the sheet data
+    """
     file_path = Path(file_path)
 
     if not file_path.exists():
@@ -29,9 +35,14 @@ def read_excel(
 
     try:
         logger.info("Reading Excel file: %s", file_path)
-        df = pd.read_excel(file_path, sheet_name=sheet_name or 0)
-        logger.info(f"Successfully read {len(df)} rows from {file_path}")  # noqa: G004
-        return df
+        result = pd.read_excel(file_path, sheet_name=sheet_name)
+        # Ensure we always return a DataFrame, not a dict
+        if isinstance(result, dict):
+            raise TypeError(
+                "Multiple sheets returned. Please specify a single sheet name or index."
+            )
+        logger.info("Successfully read %s rows from %s", len(result), file_path)
+        return result
     except Exception as e:
         logger.error("Error reading Excel file %s: %s", file_path, e)
         raise
