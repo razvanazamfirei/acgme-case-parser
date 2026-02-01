@@ -1,4 +1,11 @@
-"""Data models and configuration for the case parser."""
+"""Data models and configuration for the case parser.
+
+NOTE: Business rules (age ranges, anesthesia mappings, procedure rules) have been
+moved to the patterns/ directory for easier modification. Import them from there:
+- patterns.age_patterns.AGE_RANGES
+- patterns.anesthesia_patterns.ANESTHESIA_MAPPING
+- patterns.procedure_patterns.PROCEDURE_RULES
+"""
 
 from __future__ import annotations
 
@@ -20,55 +27,6 @@ class ColumnMap:
     procedure: str = "Procedure"
     services: str = "Services"
 
-
-@dataclass(frozen=True)
-class AgeRange:
-    """Age range with upper bound and category label."""
-
-    upper_bound: float
-    category: str
-
-
-@dataclass(frozen=True)
-class ProcedureRule:
-    """Rule for categorizing procedures based on service keywords."""
-
-    keywords: tuple[str, ...]
-    category: str
-    exclude_keywords: tuple[str, ...] = ()
-
-
-# Default age ranges for categorization
-AGE_RANGES = [
-    AgeRange(0.25, "a. < 3 months"),
-    AgeRange(3, "b. >= 3 mos. and < 3 yr."),
-    AgeRange(12, "c. >= 3 yr. and < 12 yr."),
-    AgeRange(65, "d. >= 12 yr. and < 65 yr."),
-    AgeRange(float("inf"), "e. >= 65 year"),
-]
-
-# Anesthesia type mapping
-ANESTHESIA_MAPPING = {
-    "CSE": "CSE",
-    "EPIDURAL": "Epidural",
-    "SPINAL": "Spinal",
-    "BLOCK": "Peripheral nerve block",
-    "PNB": "Peripheral nerve block",
-    "MAC": "MAC",
-    "SEDATION": "MAC",
-    "GENERAL": "GA",
-    "ENDOTRACHEAL": "GA",
-}
-
-# Procedure categorization rules in priority order
-PROCEDURE_RULES = [
-    ProcedureRule(("CARDIAC",), "Cardiac"),
-    ProcedureRule(("NEURO",), "Intracerebral"),
-    ProcedureRule(("THOR",), "Intrathoracic non-cardiac", exclude_keywords=("CARD",)),
-    ProcedureRule(("VASC",), "Procedures Major Vessels"),
-    ProcedureRule(("TRANSPLANT",), "Other (procedure cat)"),
-    # Special case for OB/GYN - handled separately due to procedure-dependent logic
-]
 
 # Output column order
 OUTPUT_COLUMNS = [

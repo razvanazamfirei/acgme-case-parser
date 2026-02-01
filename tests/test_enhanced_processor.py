@@ -6,6 +6,7 @@ from datetime import date, datetime
 
 import pandas as pd
 import pytest
+from case_parser.enhanced_processor import EnhancedCaseProcessor
 
 from case_parser.domain import (
     AgeCategory,
@@ -14,7 +15,6 @@ from case_parser.domain import (
     ParsedCase,
     ProcedureCategory,
 )
-from case_parser.enhanced_processor import EnhancedCaseProcessor
 from case_parser.models import ColumnMap
 
 

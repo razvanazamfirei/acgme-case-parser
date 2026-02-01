@@ -8,14 +8,18 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from .enhanced_processor import EnhancedCaseProcessor
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
 from .exceptions import CaseParserError
 from .io import ExcelHandler, read_excel
 from .logging_config import setup_logging
 from .models import ColumnMap
-from .processors import CaseProcessor
+from .processor import CaseProcessor
 from .validation import ValidationReport
-from .web_exporter import WebExporter
+
+console = Console()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -34,11 +38,8 @@ Examples:
   # With column overrides
   %(prog)s input.xlsx output.xlsx --col-date "Date of Service" --col-age "Patient Age"
 
-  # Export to JSON for ACGME web form
-  %(prog)s input.xlsx output.xlsx --json-export cases.json --resident-id "1325527"
-
   # With validation report
-  %(prog)s input.xlsx output.xlsx --use-enhanced --validation-report validation.txt
+  %(prog)s input.xlsx output.xlsx --validation-report validation.txt
         """,
     )
 
@@ -70,33 +71,6 @@ Examples:
         "--validation-report",
         help="Generate validation report (text, json, or excel format)",
         metavar="FILE",
-    )
-    parser.add_argument(
-        "--use-enhanced",
-        action="store_true",
-        help="Use enhanced processor with typed intermediate representation",
-    )
-
-    # Web export options
-    parser.add_argument(
-        "--json-export",
-        help="Export cases to JSON format for ACGME web form (path to .json file)",
-        metavar="FILE",
-    )
-    parser.add_argument(
-        "--resident-id",
-        help="ACGME resident ID for JSON export",
-        metavar="ID",
-    )
-    parser.add_argument(
-        "--program-id",
-        help="ACGME program ID for JSON export",
-        metavar="ID",
-    )
-    parser.add_argument(
-        "--program-name",
-        help="Program name for JSON export",
-        metavar="NAME",
     )
 
     # Column override options
@@ -142,14 +116,8 @@ def validate_arguments(args: argparse.Namespace) -> None:
     if args.default_year < 1900 or args.default_year > 2100:
         raise ValueError("Default year must be between 1900 and 2100")
 
-    # Validate JSON export arguments
-    if args.json_export:
-        json_path = Path(args.json_export)
-        if not json_path.suffix.lower() == ".json":
-            raise ValueError("JSON export file must have .json extension")
 
-
-def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
+def main() -> None:  # noqa: PLR0915
     """Main entry point."""
     parser = build_arg_parser()
     args = parser.parse_args()
@@ -171,109 +139,119 @@ def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
         df = read_excel(args.input_file, sheet_name=args.sheet or 0)
 
         if df.empty:
-            print("Warning: Input file is empty")
+            console.print("[yellow]Warning:[/yellow] Input file is empty")
             return
 
-        # Choose processor
-        if args.use_enhanced:
-            print("Using enhanced processor with typed intermediate representation...")
-            enhanced_processor = EnhancedCaseProcessor(columns, args.default_year)
+        # Process data
+        processor = CaseProcessor(columns, args.default_year)
+        parsed_cases = processor.process_dataframe(df)
+        output_df = processor.cases_to_dataframe(parsed_cases)
 
-            # Process data to get typed cases
-            parsed_cases = enhanced_processor.process_dataframe(df)
+        # Generate validation report if requested
+        if args.validation_report:
+            report_path = Path(args.validation_report)
+            report = ValidationReport(parsed_cases)
 
-            # Convert to output dataframe
-            output_df = enhanced_processor.cases_to_dataframe(parsed_cases)
+            # Determine format from extension
+            if report_path.suffix.lower() == ".json":
+                format_type = "json"
+            elif report_path.suffix.lower() in {".xlsx", ".xls"}:
+                format_type = "excel"
+            else:
+                format_type = "text"
 
-            # Generate validation report if requested
-            if args.validation_report:
-                report_path = Path(args.validation_report)
-                report = ValidationReport(parsed_cases)
+            report.save_report(report_path, output_format=format_type)
+            console.print(f"\n[green]Validation report saved to:[/green] {report_path}")
 
-                # Determine format from extension
-                if report_path.suffix.lower() == ".json":
-                    format_type = "json"
-                elif report_path.suffix.lower() in {".xlsx", ".xls"}:
-                    format_type = "excel"
-                else:
-                    format_type = "text"
+            # Print summary to console
+            summary = report.get_summary()
+            console.print()
+            console.print(
+                Panel(
+                    "[bold]Validation Summary[/bold]",
+                    border_style="cyan",
+                )
+            )
 
-                report.save_report(report_path, output_format=format_type)
-                print(f"\nValidation report saved to: {report_path}")
+            # Create summary table
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_column(style="cyan", no_wrap=True)
+            table.add_column(style="white")
 
-                # Print summary to console
-                summary = report.get_summary()
-                print("\nValidation Summary:")
-                print(f"  Total Cases: {summary['total_cases']}")
-                print(f"  Cases with Warnings: {summary['cases_with_warnings']}")
-                print(f"  Low Confidence Cases: {summary['low_confidence_cases']}")
-                print(f"  Average Confidence: {summary['average_confidence']:.3f}")
+            table.add_row("Total Cases:", str(summary["total_cases"]))
+            table.add_row(
+                "Cases with Warnings:",
+                f"[yellow]{summary['cases_with_warnings']}[/yellow]"
+                if summary["cases_with_warnings"] > 0
+                else str(summary["cases_with_warnings"]),
+            )
+            table.add_row(
+                "Low Confidence Cases:",
+                f"[red]{summary['low_confidence_cases']}[/red]"
+                if summary["low_confidence_cases"] > 0
+                else str(summary["low_confidence_cases"]),
+            )
+            table.add_row("Average Confidence:", f"{summary['average_confidence']:.3f}")
 
-        else:
-            print("Using legacy processor...")
-            legacy_processor = CaseProcessor(columns, args.default_year)
-            output_df = legacy_processor.process_dataframe(df)
+            console.print(table)
+            console.print()
 
         # Write output
         excel_handler.write_excel(
             output_df, args.output_file, fixed_widths={"Original Procedure": 12}
         )
 
-        # Export to JSON if requested
-        if args.json_export:
-            print(f"\nExporting to JSON: {args.json_export}")
-
-            # Build program info
-            program_info = {}
-            if args.program_id:
-                program_info["program_id"] = args.program_id
-            if args.program_name:
-                program_info["program_name"] = args.program_name
-
-            # Create web exporter
-            web_exporter = WebExporter()
-            web_exporter.export_to_json(
-                output_df,
-                args.json_export,
-                resident_id=args.resident_id,
-                program_info=program_info or None,
-            )
-
-            print(f"JSON export saved to: {args.json_export}")
-
         # Print summary
         summary = excel_handler.get_data_summary(output_df)
         print_summary(output_file, summary)
 
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
     except ValueError as e:
-        print(f"Error: {e}")
+        console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
     except PermissionError as e:
-        print(f"Permission error: {e}")
+        console.print(f"[red]Permission error:[/red] {e}")
         sys.exit(1)
     except CaseParserError as e:
-        print(f"Processing error: {e}")
+        console.print(f"[red]Processing error:[/red] {e}")
         sys.exit(1)
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        console.print(f"[red]Unexpected error:[/red] {e}")
         if args.verbose:
             traceback.print_exc()
         sys.exit(1)
 
 
 def print_summary(output_file: Path, summary: dict[str, Any]):
-    print("\nOutput Summary:")
-    print(f"  Cases: {summary['total_cases']}")
-    print(f"  Date range: {summary['date_range']}")
+    console.print()
+    console.print(
+        Panel(
+            "[bold]Output Summary[/bold]",
+            border_style="green",
+        )
+    )
+
+    # Create summary table
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column(style="cyan", no_wrap=True)
+    table.add_column(style="white")
+
+    table.add_row("Cases:", str(summary["total_cases"]))
+    table.add_row("Date range:", summary["date_range"])
+
+    console.print(table)
 
     if summary["empty_cases"] > 0:
-        print(f"  Warning: {summary['empty_cases']} cases have empty Case IDs")
+        console.print(
+            f"  [yellow]Warning:[/yellow] {summary['empty_cases']} "
+            "cases have empty Case IDs"
+        )
 
-    print(f"\nOutput saved to: {output_file}")
-    print("Done.")
+    console.print()
+    console.print(f"[green]Output saved to:[/green] {output_file}")
+    console.print("[bold green]Done.[/bold green]")
 
 
 if __name__ == "__main__":

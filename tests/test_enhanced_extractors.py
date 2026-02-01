@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from case_parser.domain import (
-    AirwayManagement,
-    ExtractionFinding,
-    MonitoringTechnique,
-    VascularAccess,
-)
 from case_parser.enhanced_extractors import (
     _calculate_pattern_confidence,
     _extract_with_context,
@@ -15,6 +9,13 @@ from case_parser.enhanced_extractors import (
     extract_airway_management_enhanced,
     extract_monitoring_enhanced,
     extract_vascular_access_enhanced,
+)
+
+from case_parser.domain import (
+    AirwayManagement,
+    ExtractionFinding,
+    MonitoringTechnique,
+    VascularAccess,
 )
 
 

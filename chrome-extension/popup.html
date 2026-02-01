@@ -1,62 +1,393 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ACGME Case Auto-Fill</title>
-    <link rel="stylesheet" href="popup.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>ACGME Case Submitter</title>
+  </head>
+  <body>
     <div class="container">
-        <header>
-            <h1>ACGME Case Auto-Fill</h1>
-            <p class="subtitle">Automated case entry from Excel exports</p>
-        </header>
+      <header>
+        <div class="header-row">
+          <div>
+            <h1>ACGME Case Submitter</h1>
+            <p class="subtitle">Upload Excel and cycle through cases</p>
+          </div>
+          <button id="settingsToggle" class="btn-icon" title="Settings">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M12 1v4m0 14v4m-9-9h4m14 0h4m-2.6-6.4-2.8 2.8m-10.4 4.8-2.8 2.8m0-10.4 2.8 2.8m10.4 4.8 2.8 2.8"
+              ></path>
+            </svg>
+          </button>
+        </div>
+      </header>
 
-        <div id="upload-section" class="section">
-            <h2>Step 1: Upload Case Data</h2>
-            <div class="upload-area">
-                <input type="file" id="fileInput" accept=".json" hidden>
-                <button id="uploadBtn" class="btn btn-primary">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-                        <path d="M10 14V6M10 6L7 9M10 6L13 9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M3 15V16C3 17.1046 3.89543 18 5 18H15C16.1046 18 17 17.1046 17 16V15" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                    Choose JSON File
-                </button>
-                <p id="fileName" class="file-name"></p>
+      <!-- Settings Section -->
+      <div id="settingsSection" class="section hidden">
+        <h2>Settings</h2>
+        <div class="form-field">
+          <label for="settingInstitution">Default Institution</label>
+          <select id="settingInstitution">
+            <option value="">-- Select --</option>
+            <option value="CHOP">CHOP</option>
+            <option value="HUP">HUP</option>
+            <option value="PPMC">PPMC</option>
+            <option value="Penn Hospital">Penn Hospital</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="settingDefaultAttending">
+            Default Attending (when not in file)
+          </label>
+          <input
+            type="text"
+            id="settingDefaultAttending"
+            placeholder="LASTNAME, FIRSTNAME"
+          />
+        </div>
+        <div class="form-field">
+          <label for="settingSubmitDelay">Auto-submit delay (seconds)</label>
+          <input
+            type="range"
+            id="settingSubmitDelay"
+            min="0"
+            max="2"
+            step="0.5"
+            value="0.5"
+          />
+          <span id="submitDelayValue">0.5s</span>
+        </div>
+        <div class="form-field checkbox-inline">
+          <label>
+            <input type="checkbox" id="settingCardiacAutoFill" checked />
+            Auto-fill cardiac case extras (TEE, arterial, central, PA cath)
+          </label>
+        </div>
+        <div class="settings-actions">
+          <button id="clearSessionBtn" class="btn btn-skip">
+            Clear Session
+          </button>
+          <button id="saveSettingsBtn" class="btn btn-primary">
+            Save Settings
+          </button>
+        </div>
+      </div>
+
+      <!-- Upload Section -->
+      <div id="uploadSection" class="section">
+        <h2>Load Cases</h2>
+        <div class="upload-area">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden />
+          <button id="uploadBtn" class="btn btn-primary">
+            Choose Excel File
+          </button>
+          <div id="fileName" class="file-name"></div>
+        </div>
+        <div class="divider"></div>
+        <details>
+          <summary>Expected columns (from case-parser output)</summary>
+          <ol>
+            <li>Case ID</li>
+            <li>Case Date</li>
+            <li>Supervisor</li>
+            <li>Age (a-e)</li>
+            <li>Original Procedure (comments)</li>
+            <li>ASA Physical Status</li>
+            <li>Anesthesia Type</li>
+            <li>Airway Management</li>
+            <li>Procedure Category</li>
+            <li>Specialized Vascular Access</li>
+            <li>Specialized Monitoring Techniques</li>
+          </ol>
+        </details>
+      </div>
+
+      <!-- Case Navigation Section -->
+      <div id="navSection" class="section hidden">
+        <div class="nav-header">
+          <h2>Cases</h2>
+          <div class="case-stats">
+            <span class="stat pending">
+              <span id="pendingCount">0</span>
+              pending
+            </span>
+            <span class="stat submitted">
+              <span id="submittedCount">0</span>
+              submitted
+            </span>
+            <span class="stat skipped">
+              <span id="skippedCount">0</span>
+              skipped
+            </span>
+          </div>
+        </div>
+        <div class="nav-controls">
+          <button id="prevBtn" class="btn btn-nav" disabled>&larr; Prev</button>
+          <div class="case-counter">
+            <span id="currentIndex">0</span>/<span id="totalCount">0</span>
+          </div>
+          <button id="nextBtn" class="btn btn-nav">Next &rarr;</button>
+        </div>
+        <div class="jump-controls">
+          <label for="caseJump">Jump to:</label>
+          <select id="caseJump"></select>
+          <label class="filter-label">
+            <input type="checkbox" id="filterPending" checked />
+            Show only pending
+          </label>
+        </div>
+      </div>
+
+      <!-- Case Preview/Edit Section -->
+      <div id="previewSection" class="section hidden">
+        <h2>
+          <span id="caseStatus" class="status-badge pending">Pending</span>
+          Case Details
+        </h2>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="caseId">Case ID</label>
+            <input type="text" id="caseId" />
+          </div>
+          <div class="form-field">
+            <label for="date">Date</label>
+            <input type="text" id="date" placeholder="MM/DD/YYYY" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field flex-2">
+            <label for="attending">Attending</label>
+            <input type="text" id="attending" />
+          </div>
+          <div class="form-field">
+            <label for="ageCategory">Age</label>
+            <select id="ageCategory">
+              <option value="">--</option>
+              <option value="a">a. &lt; 3 mo</option>
+              <option value="b">b. 3mo - 3yr</option>
+              <option value="c">c. 3 - 12yr</option>
+              <option value="d">d. 12 - 65yr</option>
+              <option value="e">e. &gt;= 65yr</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="asa">ASA</label>
+            <select id="asa">
+              <option value="">--</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="1E">1E</option>
+              <option value="2E">2E</option>
+              <option value="3E">3E</option>
+              <option value="4E">4E</option>
+              <option value="5E">5E</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="anesthesia">Anesthesia Type</label>
+            <select id="anesthesia">
+              <option value="">--</option>
+              <option value="GA">GA</option>
+              <option value="MAC">MAC</option>
+              <option value="Spinal">Spinal</option>
+              <option value="Epidural">Epidural</option>
+              <option value="CSE">CSE</option>
+              <option value="PNB Single">PNB Single</option>
+              <option value="PNB Continuous">PNB Continuous</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="procedureCategory">Procedure Category</label>
+          <select id="procedureCategory">
+            <option value="">--</option>
+            <option value="Other (procedure cat)">
+              Other (non-cardiac, non-OB)
+            </option>
+            <option value="Intrathoracic non-cardiac">
+              Intrathoracic (non-cardiac)
+            </option>
+            <option value="Cardiac with CPB">Cardiac with CPB</option>
+            <option value="Cardiac without CPB">Cardiac without CPB</option>
+            <option value="Procedures on major vessels (open)">
+              Major Vessels (open)
+            </option>
+            <option value="Procedures on major vessels (endovascular)">
+              Major Vessels (endovascular)
+            </option>
+            <option value="Intracerebral Vascular (open)">
+              Intracerebral Vascular (open)
+            </option>
+            <option value="Intracerebral Nonvascular (open)">
+              Intracerebral Nonvascular (open)
+            </option>
+            <option value="Intracerebral (endovascular)">
+              Intracerebral (endovascular)
+            </option>
+            <option value="Cesarean del">Cesarean</option>
+            <option value="Vaginal Delivery">Vaginal Delivery</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label>Airway Management</label>
+          <div class="checkbox-group" id="airwayGroup">
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="ETT" />
+              ETT
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="Nasal ETT" />
+              Nasal ETT
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="LMA" />
+              LMA
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="Mask" />
+              Mask
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="DLT" />
+              DLT
+            </label>
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                name="airway"
+                value="Direct Laryngoscope"
+              />
+              Direct
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="airway" value="Video Laryngoscope" />
+              Video
+            </label>
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                name="airway"
+                value="Flexible Bronchoscopic"
+              />
+              FOB
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label>Vascular Access</label>
+            <div class="checkbox-group" id="vascularGroup">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  name="vascular"
+                  value="Arterial Catheter"
+                />
+                Arterial
+              </label>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  name="vascular"
+                  value="Central Venous Catheter"
+                />
+                Central
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="vascular" value="PA Catheter" />
+                PA Cath
+              </label>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  name="vascular"
+                  value="Ultrasound Guided"
+                />
+                US Guided
+              </label>
             </div>
+          </div>
+          <div class="form-field">
+            <label>Monitoring</label>
+            <div class="checkbox-group" id="monitoringGroup">
+              <label class="checkbox-label">
+                <input type="checkbox" name="monitoring" value="TEE" />
+                TEE
+              </label>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  name="monitoring"
+                  value="Neuromonitoring"
+                />
+                Neuro
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="monitoring" value="CSF Drain" />
+                CSF Drain
+              </label>
+            </div>
+          </div>
         </div>
 
-        <div id="cases-section" class="section hidden">
-            <h2>Step 2: Select Case</h2>
-            <div id="casesList" class="cases-list"></div>
+        <div class="form-field">
+          <label for="comments">Comments (Original Procedure)</label>
+          <textarea id="comments" rows="2"></textarea>
         </div>
 
-        <div id="status-section" class="section hidden">
-            <h2>Status</h2>
-            <div id="statusMessage" class="status-message"></div>
+        <div class="action-row">
+          <button id="skipBtn" class="btn btn-skip">Skip</button>
+          <button id="fillBtn" class="btn btn-primary">Fill Form</button>
+          <button id="fillSubmitBtn" class="btn btn-secondary">
+            Fill & Submit
+          </button>
         </div>
 
-        <div id="help-section" class="section">
-            <details>
-                <summary>How to use</summary>
-                <ol>
-                    <li>Export your cases to JSON using: <code>case-parser input.xlsx output.xlsx --json-export cases.json</code></li>
-                    <li>Navigate to the ACGME case entry page</li>
-                    <li>Upload the JSON file here</li>
-                    <li>Select a case from the list</li>
-                    <li>Click "Fill Form" to auto-populate the fields</li>
-                    <li>Review the filled data and submit manually</li>
-                </ol>
-            </details>
+        <!-- Confirmation Panel (shown after Fill & Submit clicked) -->
+        <div id="confirmationPanel" class="confirmation-panel hidden">
+          <div class="confirmation-header">Confirm Submission</div>
+          <div id="confirmationSummary" class="confirmation-summary"></div>
+          <div class="confirmation-actions">
+            <button id="cancelSubmitBtn" class="btn btn-nav">Cancel</button>
+            <button id="confirmSubmitBtn" class="btn btn-secondary">
+              Submit Now
+            </button>
+          </div>
         </div>
+      </div>
 
-        <footer>
-            <p class="version">v1.0.0</p>
-        </footer>
+      <!-- Status Message -->
+      <div id="statusSection" class="section hidden">
+        <div id="statusMessage" class="status-message"></div>
+      </div>
+
+      <footer>
+        <p class="version">v2.0 - Excel Batch Mode</p>
+      </footer>
     </div>
 
+    <script src="xlsx.min.js"></script>
     <script src="popup.js"></script>
-</body>
+  </body>
 </html>

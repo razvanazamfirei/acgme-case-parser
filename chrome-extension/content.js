@@ -1,280 +1,518 @@
-// content.js - Content script that fills ACGME case entry form
+// ACGME Case Entry Form Filler
+// Maps standardized output from Python case-parser to ACGME form codes
 
-console.log('[ACGME Auto-Fill] Content script loaded');
+// Patient age category mapping
+const AGE_MAP = {
+  a: "30",
+  b: "31",
+  c: "32",
+  d: "33",
+  e: "34",
+};
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'fillForm') {
-        try {
-            fillACGMEForm(request.caseData);
-            sendResponse({ success: true });
-        } catch (error) {
-            console.error('[ACGME Auto-Fill] Error filling form:', error);
-            sendResponse({ success: false, error: error.message });
+// ASA Status codes
+const ASA_MAP = {
+  1: "156628",
+  2: "156632",
+  3: "156634",
+  4: "156636",
+  5: "156630",
+  6: "156631",
+  "1E": "156629",
+  "2E": "156633",
+  "3E": "156635",
+  "4E": "156637",
+  "5E": "156626",
+};
+
+// Anesthesia type codes
+const ANESTHESIA_MAP = {
+  GA: "1256330",
+  MAC: "156641",
+  Spinal: "1256331",
+  Epidural: "1256332",
+  CSE: "156646",
+  "PNB Continuous": "156647",
+  "PNB Single": "156648",
+};
+
+// Airway device codes (from Python tool output)
+const AIRWAY_MAP = {
+  "Oral ETT": "156654",
+  ETT: "156654", // Alias for backwards compatibility
+  "Nasal ETT": "156655",
+  "Supraglottic Airway": "1256333",
+  LMA: "1256333", // Alias for backwards compatibility
+  Mask: "156650",
+  DLT: "1256336",
+};
+
+// Laryngoscopy codes
+const LARYNGOSCOPY_MAP = {
+  "Direct Laryngoscope": "1256334",
+  "Video Laryngoscope": "1256335",
+  "Flexible Bronchoscopic": "2298046",
+};
+
+// Procedure category codes (matching Python tool output)
+const PROCEDURE_CAT_MAP = {
+  "Cardiac with CPB": "156681",
+  "Cardiac without CPB": "156682",
+  "Procedures on major vessels (endovascular)": "156685",
+  "Procedures on major vessels (open)": "156684",
+  "Procedures Major Vessels": "156684",
+  "Intracerebral (endovascular)": "156688",
+  "Intracerebral Vascular (open)": "156687",
+  "Intracerebral Nonvascular (open)": "156689",
+  Intracerebral: "156687",
+  "Cesarean del": "156692",
+  Cesarean: "156692",
+  "Intrathoracic non-cardiac": "156683",
+  Intrathoracic: "156683",
+};
+
+// Vascular access codes (matching Python tool output)
+const VASCULAR_MAP = {
+  "Arterial Catheter": "1256338",
+  "Central Venous Catheter": "1256339",
+  "PA Catheter": "156700",
+  "Ultrasound Guided": "156693",
+};
+
+// Monitoring codes (matching Python tool output)
+const MONITORING_MAP = {
+  TEE: "156707",
+  Neuromonitoring: "156708",
+  "CSF Drain": "1256341",
+};
+
+// Institution IDs
+const INSTITUTION_MAP = {
+  CHOP: "12763",
+  "Penn Hospital": "12771",
+  HUP: "12748",
+  PPMC: "12871",
+};
+
+function getFieldId(type) {
+  if (type === "caseId") {
+    const el = document.querySelector('input[id^="7129"]');
+    return el ? el.id : null;
+  }
+  if (type === "date") {
+    const el = document.querySelector('input[id^="5b1c"]');
+    return el ? el.id : null;
+  }
+  return null;
+}
+
+function setSelectValue(selectId, value) {
+  const select = document.getElementById(selectId);
+  if (!select) {
+    console.warn("Select not found:", selectId);
+    return false;
+  }
+
+  select.value = value;
+
+  if (
+    typeof $ !== "undefined" &&
+    $(select).hasClass("select2-hidden-accessible")
+  ) {
+    $(select).val(value).trigger("change");
+  } else {
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  return true;
+}
+
+function setInputValue(inputId, value) {
+  const input = document.getElementById(inputId);
+  if (!input) {
+    console.warn("Input not found:", inputId);
+    return false;
+  }
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  return true;
+}
+
+function checkProcedure(codeId) {
+  const checkbox = document.getElementById(String(codeId));
+  if (!checkbox) {
+    console.warn("Checkbox not found:", codeId);
+    return false;
+  }
+  if (!checkbox.checked) {
+    checkbox.click();
+  }
+  return checkbox.checked;
+}
+
+function uncheckAllProcedures() {
+  document.querySelectorAll(".cbprocedureid:checked").forEach((cb) => {
+    cb.click();
+  });
+}
+
+// Improved attending lookup with fuzzy matching
+function findAttendingId(name, returnAllMatches = false) {
+  const select = document.getElementById("Attendings");
+  if (!select) {
+    return returnAllMatches ? [] : null;
+  }
+
+  const nameLower = name.toLowerCase().trim();
+  const matches = [];
+
+  // Extract last name for fuzzy matching
+  const nameParts = nameLower.split(/[,\s]+/).filter(Boolean);
+  const lastName = nameParts[0];
+
+  for (const opt of select.options) {
+    if (!opt.value || opt.value === "") {
+      continue;
+    }
+    const optText = opt.text.toLowerCase();
+
+    // Exact match (case insensitive)
+    if (optText.includes(nameLower)) {
+      if (returnAllMatches) {
+        matches.push({ value: opt.value, text: opt.text, matchType: "exact" });
+      } else {
+        return opt.value;
+      }
+    }
+    // Last name only match
+    else if (lastName && optText.startsWith(lastName)) {
+      matches.push({ value: opt.value, text: opt.text, matchType: "lastName" });
+    }
+  }
+
+  if (returnAllMatches) {
+    return matches;
+  }
+
+  // Return first lastName match if no exact match
+  const lastNameMatch = matches.find((m) => m.matchType === "lastName");
+  return lastNameMatch ? lastNameMatch.value : null;
+}
+
+// Get available attending options for display
+function getAttendingOptions() {
+  const select = document.getElementById("Attendings");
+  if (!select) {
+    return [];
+  }
+
+  const options = [];
+  for (const opt of select.options) {
+    if (opt.value && opt.value !== "") {
+      options.push({ value: opt.value, text: opt.text });
+    }
+  }
+  return options;
+}
+
+function fillCase(caseData) {
+  console.log("Filling case:", caseData);
+
+  const result = {
+    success: true,
+    filled: [],
+    warnings: [],
+    errors: [],
+  };
+
+  // Clear previous selections
+  uncheckAllProcedures();
+
+  // Set Case ID
+  const caseIdField = getFieldId("caseId");
+  if (caseIdField && caseData.caseId) {
+    if (setInputValue(caseIdField, caseData.caseId)) {
+      result.filled.push("caseId");
+    }
+  }
+
+  // Set Date
+  const dateField = getFieldId("date");
+  if (dateField && caseData.date) {
+    if (setInputValue(dateField, caseData.date)) {
+      result.filled.push("date");
+    }
+  }
+
+  // Set Institution
+  if (caseData.institution) {
+    const instId =
+      INSTITUTION_MAP[caseData.institution] || caseData.institution;
+    if (setSelectValue("Institutions", instId)) {
+      result.filled.push("institution");
+    }
+  }
+
+  // Set Attending with improved lookup
+  let attendingSet = false;
+  if (caseData.attending) {
+    const attId = findAttendingId(caseData.attending);
+    if (attId) {
+      if (setSelectValue("Attendings", attId)) {
+        result.filled.push("attending");
+        attendingSet = true;
+      }
+    } else {
+      // Try fuzzy matches
+      const matches = findAttendingId(caseData.attending, true);
+      if (matches.length > 0) {
+        // Use first match but warn
+        if (setSelectValue("Attendings", matches[0].value)) {
+          result.filled.push("attending");
+          result.warnings.push(
+            `Attending "${caseData.attending}" not found exactly, used "${matches[0].text}"`,
+          );
+          attendingSet = true;
         }
-        return true; // Keep the message channel open for async response
+      }
     }
-});
+  }
 
-/**
- * Main function to fill the ACGME case entry form
- */
-function fillACGMEForm(caseData) {
-    console.log('[ACGME Auto-Fill] Filling form with case data:', caseData);
-
-    // Fill basic fields
-    fillCaseID(caseData.case_id);
-    fillCaseDate(caseData.case_date);
-    fillCaseYear(caseData.case_year);
-
-    // Fill dropdowns
-    fillInstitution(caseData.institution);
-    fillSupervisor(caseData.supervisor);
-    fillPatientAge(caseData.patient);
-
-    // Fill procedure codes (checkboxes)
-    fillProcedureCodes(caseData.procedure_codes || []);
-
-    // Fill comments if any
-    if (caseData.comments) {
-        fillComments(caseData.comments);
+  // Use default attending if not set
+  if (!attendingSet && caseData.defaultAttending) {
+    const attId = findAttendingId(caseData.defaultAttending);
+    if (attId) {
+      if (setSelectValue("Attendings", attId)) {
+        result.filled.push("attending");
+        result.warnings.push(
+          `Used default attending: ${caseData.defaultAttending}`,
+        );
+        attendingSet = true;
+      }
     }
+  }
 
-    console.log('[ACGME Auto-Fill] Form filling complete');
-}
+  // Fall back to FACULTY, FACULTY if still not set
+  if (!attendingSet) {
+    const facultyId = findAttendingId("FACULTY, FACULTY");
+    if (facultyId) {
+      if (setSelectValue("Attendings", facultyId)) {
+        result.filled.push("attending");
+        result.warnings.push(
+          `Attending "${caseData.attending || "(none)"}" not found, used FACULTY, FACULTY`,
+        );
+      }
+    } else {
+      result.warnings.push(
+        `Could not set attending - no matching option found`,
+      );
+    }
+  }
 
-/**
- * Fill Case ID field
- */
-function fillCaseID(caseID) {
-    if (!caseID) return;
+  // Set Patient Age
+  if (caseData.ageCategory) {
+    const ageKey = caseData.ageCategory.charAt(0).toLowerCase();
+    const ageId = AGE_MAP[ageKey];
+    if (ageId) {
+      if (setSelectValue("PatientTypes", ageId)) {
+        result.filled.push("age");
+      }
+    }
+  }
 
-    // The Case ID field has a hashed name, so we find it by its label
-    const labels = Array.from(document.querySelectorAll('label'));
-    const caseIDLabel = labels.find(label => label.textContent.trim() === 'Case ID');
+  // Set Comments
+  if (caseData.comments) {
+    const commentsContainer = document.getElementById("commentsContainer");
+    if (commentsContainer && !commentsContainer.classList.contains("show")) {
+      commentsContainer.classList.add("show");
+    }
+    const commentsArea = document.getElementById("Comments");
+    if (commentsArea) {
+      commentsArea.value = caseData.comments;
+      result.filled.push("comments");
+    }
+  }
 
-    if (caseIDLabel) {
-        // Find the input next to the label
-        const input = caseIDLabel.parentElement?.querySelector('input[type="text"]');
-        if (input) {
-            input.value = caseID;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('[ACGME Auto-Fill] Set Case ID:', caseID);
+  // Set ASA Status
+  if (caseData.asa) {
+    const asaCode = ASA_MAP[caseData.asa.toString().toUpperCase()];
+    if (asaCode) {
+      console.log("Checking ASA:", caseData.asa, "-> code", asaCode);
+      if (checkProcedure(asaCode)) {
+        result.filled.push("asa");
+      }
+    }
+  }
+
+  // Set Anesthesia Type
+  if (caseData.anesthesia) {
+    const code = ANESTHESIA_MAP[caseData.anesthesia];
+    if (code) {
+      console.log("Checking Anesthesia:", caseData.anesthesia, "-> code", code);
+      if (checkProcedure(code)) {
+        result.filled.push("anesthesia");
+      }
+    }
+  }
+
+  // Set Airway Management (semicolon-separated from Python tool)
+  if (caseData.airway) {
+    caseData.airway.split(";").forEach((item) => {
+      item = item.trim();
+      if (!item) {
+        return;
+      }
+
+      // Check airway device
+      if (AIRWAY_MAP[item]) {
+        console.log(
+          "Checking Airway device:",
+          item,
+          "-> code",
+          AIRWAY_MAP[item],
+        );
+        if (checkProcedure(AIRWAY_MAP[item])) {
+          result.filled.push(`airway:${item}`);
         }
-    }
-}
+      }
 
-/**
- * Fill Case Date field
- */
-function fillCaseDate(date) {
-    if (!date) return;
-
-    const labels = Array.from(document.querySelectorAll('label'));
-    const dateLabel = labels.find(label => label.textContent.includes('Case Date'));
-
-    if (dateLabel) {
-        const input = dateLabel.parentElement?.querySelector('input[type="text"]');
-        if (input) {
-            input.value = date;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('[ACGME Auto-Fill] Set Case Date:', date);
+      // Check laryngoscopy type
+      if (LARYNGOSCOPY_MAP[item]) {
+        console.log(
+          "Checking Laryngoscopy:",
+          item,
+          "-> code",
+          LARYNGOSCOPY_MAP[item],
+        );
+        if (checkProcedure(LARYNGOSCOPY_MAP[item])) {
+          result.filled.push(`laryngoscopy:${item}`);
         }
-    }
-}
-
-/**
- * Fill Case Year dropdown
- */
-function fillCaseYear(year) {
-    if (!year) return;
-
-    const select = document.querySelector('select#ProcedureYear, select[name="ProcedureYear"]');
-    if (select) {
-        select.value = String(year);
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[ACGME Auto-Fill] Set Case Year:', year);
-    }
-}
-
-/**
- * Fill Institution/Site dropdown
- */
-function fillInstitution(institution) {
-    if (!institution || !institution.code) return;
-
-    const select = document.querySelector('select#Institutions, select[name="Institutions"]');
-    if (select) {
-        select.value = institution.code;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[ACGME Auto-Fill] Set Institution:', institution.name);
-    }
-}
-
-/**
- * Fill Supervisor dropdown
- */
-function fillSupervisor(supervisor) {
-    if (!supervisor || !supervisor.code) return;
-
-    const select = document.querySelector('select#Attendings, select[name="Attendings"]');
-    if (select) {
-        select.value = supervisor.code;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[ACGME Auto-Fill] Set Supervisor:', supervisor.name);
-    }
-}
-
-/**
- * Fill Patient Age dropdown
- */
-function fillPatientAge(patient) {
-    if (!patient || !patient.age_code) return;
-
-    const select = document.querySelector('select#PatientTypes, select[name="PatientTypes"]');
-    if (select) {
-        select.value = patient.age_code;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[ACGME Auto-Fill] Set Patient Age:', patient.age_category);
-    }
-}
-
-/**
- * Fill procedure code checkboxes
- */
-function fillProcedureCodes(procedureCodes) {
-    if (!procedureCodes || procedureCodes.length === 0) return;
-
-    console.log('[ACGME Auto-Fill] Filling procedure codes:', procedureCodes);
-
-    let filledCount = 0;
-
-    procedureCodes.forEach(code => {
-        // Find checkbox by ID (procedure codes are checkbox IDs)
-        const checkbox = document.getElementById(code);
-        if (checkbox && checkbox.type === 'checkbox') {
-            if (!checkbox.checked) {
-                checkbox.click(); // Use click to trigger any event handlers
-                filledCount++;
-                console.log('[ACGME Auto-Fill] Checked procedure code:', code);
-            }
-        } else {
-            console.warn('[ACGME Auto-Fill] Procedure code not found:', code);
-        }
+      }
     });
+  }
 
-    console.log(`[ACGME Auto-Fill] Filled ${filledCount}/${procedureCodes.length} procedure codes`);
-}
-
-/**
- * Fill comments field
- */
-function fillComments(comments) {
-    if (!comments) return;
-
-    const textarea = document.querySelector('textarea#Comments, textarea[name="Comments"]');
-    if (textarea) {
-        textarea.value = comments;
-        textarea.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[ACGME Auto-Fill] Set Comments');
+  // Set Procedure Category
+  const procCat = caseData.procedureCategory;
+  if (procCat && procCat !== "Other (procedure cat)") {
+    const code = PROCEDURE_CAT_MAP[procCat];
+    if (code) {
+      console.log("Checking Procedure Cat:", procCat, "-> code", code);
+      if (checkProcedure(code)) {
+        result.filled.push("procedureCategory");
+      }
     }
-}
+  }
 
-/**
- * Helper function to find select option by text (case-insensitive)
- */
-function selectOptionByText(selectElement, text) {
-    if (!selectElement || !text) return false;
+  // Determine if cardiac case for auto-checks
+  const isCardiac =
+    procCat === "Cardiac with CPB" || procCat === "Cardiac without CPB";
 
-    const options = Array.from(selectElement.options);
-    const matchingOption = options.find(option =>
-        option.text.toLowerCase().includes(text.toLowerCase()) ||
-        text.toLowerCase().includes(option.text.toLowerCase())
+  // Check if cardiac auto-fill is enabled (default true for backwards compatibility)
+  const cardiacAutoFill = caseData.cardiacAutoFill !== false;
+
+  // For cardiac cases, optionally auto-check standard monitoring/access
+  if (isCardiac && cardiacAutoFill) {
+    console.log(
+      "Cardiac case - auto-checking TEE, arterial, central, ultrasound, PA catheter",
     );
 
-    if (matchingOption) {
-        selectElement.value = matchingOption.value;
-        selectElement.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
+    // Only add items not already in the data
+    const existingVascular = (caseData.vascularAccess || "").toLowerCase();
+    const existingMonitoring = (caseData.monitoring || "").toLowerCase();
+
+    // TEE (if not already specified)
+    if (!existingMonitoring.includes("tee")) {
+      checkProcedure(MONITORING_MAP.TEE);
+      result.filled.push("cardiac:TEE");
     }
+    // Arterial (if not already specified)
+    if (!existingVascular.includes("arterial")) {
+      checkProcedure(VASCULAR_MAP["Arterial Catheter"]);
+      result.filled.push("cardiac:Arterial");
+    }
+    // Central line (if not already specified)
+    if (!existingVascular.includes("central")) {
+      checkProcedure(VASCULAR_MAP["Central Venous Catheter"]);
+      result.filled.push("cardiac:Central");
+    }
+    // Ultrasound guided (if not already specified)
+    if (!existingVascular.includes("ultrasound")) {
+      checkProcedure(VASCULAR_MAP["Ultrasound Guided"]);
+      result.filled.push("cardiac:Ultrasound");
+    }
+    // PA Catheter (if not already specified)
+    if (!existingVascular.includes("pa catheter")) {
+      checkProcedure(VASCULAR_MAP["PA Catheter"]);
+      result.filled.push("cardiac:PA");
+    }
+  }
 
-    return false;
-}
-
-/**
- * Helper function to wait for element to appear
- */
-function waitForElement(selector, timeout = 5000) {
-    return new Promise((resolve, reject) => {
-        const element = document.querySelector(selector);
-        if (element) {
-            resolve(element);
-            return;
+  // Always check vascular access from data (for both cardiac and non-cardiac)
+  if (caseData.vascularAccess) {
+    caseData.vascularAccess.split(";").forEach((item) => {
+      item = item.trim();
+      if (item && VASCULAR_MAP[item]) {
+        console.log("Checking Vascular:", item, "-> code", VASCULAR_MAP[item]);
+        if (checkProcedure(VASCULAR_MAP[item])) {
+          result.filled.push(`vascular:${item}`);
         }
-
-        const observer = new MutationObserver((mutations, obs) => {
-            const element = document.querySelector(selector);
-            if (element) {
-                obs.disconnect();
-                resolve(element);
-            }
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        setTimeout(() => {
-            observer.disconnect();
-            reject(new Error(`Element ${selector} not found within ${timeout}ms`));
-        }, timeout);
+      }
     });
-}
+  }
 
-// Show visual feedback when form is filled
-function showFeedback() {
-    const banner = document.createElement('div');
-    banner.id = 'acgme-autofill-banner';
-    banner.textContent = '✓ Form auto-filled successfully! Please review before submitting.';
-    banner.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #48bb78;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 6px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 14px;
-        font-weight: 500;
-        animation: slideIn 0.3s ease-out;
-    `;
+  // Set Monitoring
+  if (caseData.monitoring) {
+    caseData.monitoring.split(";").forEach((item) => {
+      item = item.trim();
+      if (!item) {
+        return;
+      }
 
-    // Add CSS animation
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes slideIn {
-            from {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+      if (MONITORING_MAP[item]) {
+        console.log(
+          "Checking Monitoring:",
+          item,
+          "-> code",
+          MONITORING_MAP[item],
+        );
+        if (checkProcedure(MONITORING_MAP[item])) {
+          result.filled.push(`monitoring:${item}`);
         }
-    `;
-    document.head.appendChild(style);
+      }
+    });
+  }
 
-    document.body.appendChild(banner);
-
-    // Remove after 5 seconds
-    setTimeout(() => {
-        banner.style.transition = 'opacity 0.3s';
-        banner.style.opacity = '0';
-        setTimeout(() => banner.remove(), 300);
-    }, 5000);
+  console.log("Case fill complete:", result);
+  return result;
 }
+
+function submitCase() {
+  // Try multiple selectors for the submit button
+  const submitBtn =
+    document.getElementById("btnSave") ||
+    document.querySelector('button[type="submit"]') ||
+    document.querySelector('input[type="submit"]') ||
+    document.querySelector(".btn-save") ||
+    document.querySelector('[onclick*="Save"]') ||
+    document.querySelector('[onclick*="save"]');
+
+  if (!submitBtn) {
+    console.error("Submit button not found");
+    console.log("Available buttons:", document.querySelectorAll("button"));
+    return false;
+  }
+
+  console.log("Found submit button:", submitBtn);
+  submitBtn.click();
+  console.log("Submit button clicked");
+  return true;
+}
+
+// Expose functions globally
+window.fillACGMECase = fillCase;
+window.submitACGMECase = submitCase;
+window.getAttendingOptions = getAttendingOptions;
+
+console.log(
+  "ACGME Case Submitter loaded. Use fillACGMECase({...}) to fill the form.",
+);

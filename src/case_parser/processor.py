@@ -1,4 +1,4 @@
-"""Enhanced case processor using typed intermediate representation."""
+"""Case processor using typed intermediate representation."""
 
 from __future__ import annotations
 
@@ -14,23 +14,20 @@ from .domain import (
     ParsedCase,
     ProcedureCategory,
 )
-from .enhanced_extractors import (
+from .extractors import (
     clean_names,
-    extract_airway_management_enhanced,
-    extract_monitoring_enhanced,
-    extract_vascular_access_enhanced,
+    extract_airway_management,
+    extract_monitoring,
+    extract_vascular_access,
 )
-from .models import (
-    AGE_RANGES,
-    OUTPUT_COLUMNS,
-    PROCEDURE_RULES,
-    ColumnMap,
-)
+from .models import OUTPUT_COLUMNS, ColumnMap
+from .patterns.age_patterns import AGE_RANGES
+from .patterns.categorization import categorize_procedure
 
 logger = logging.getLogger(__name__)
 
 
-class EnhancedCaseProcessor:
+class CaseProcessor:
     """Enhanced processor using typed intermediate representation."""
 
     def __init__(self, column_map: ColumnMap, default_year: int = 2025):
@@ -163,63 +160,13 @@ class EnhancedCaseProcessor:
         """
         Determine procedure category based on services and procedure text.
 
+        The actual categorization logic is delegated to patterns/categorization.py
+        for better maintainability and clarity.
+
         Returns:
             Tuple of (procedure_category, warnings_list)
         """
-        warnings = []
-        categories = []
-
-        procedure_text = "" if pd.isna(procedure) else str(procedure).upper()
-
-        # Check each service
-        for service in services:
-            service_upper = service.upper()
-
-            # Check standard rules first
-            for rule in PROCEDURE_RULES:
-                if any(keyword in service_upper for keyword in rule.keywords):
-                    # Check exclusions
-                    if rule.exclude_keywords and any(
-                        excl in service_upper for excl in rule.exclude_keywords
-                    ):
-                        continue
-
-                    # Map to enum
-                    category_map = {
-                        "Cardiac": ProcedureCategory.CARDIAC,
-                        "Intracerebral": ProcedureCategory.INTRACEREBRAL,
-                        "Intrathoracic non-cardiac": (
-                            ProcedureCategory.INTRATHORACIC_NON_CARDIAC
-                        ),
-                        "Procedures Major Vessels": ProcedureCategory.MAJOR_VESSELS,
-                        "Other (procedure cat)": ProcedureCategory.OTHER,
-                    }
-                    cat = category_map.get(rule.category, ProcedureCategory.OTHER)
-                    if cat not in categories:
-                        categories.append(cat)
-                    break
-
-            # Special handling for OB/GYN with cesarean detection
-            if any(keyword in service_upper for keyword in ("GYN", "OB", "OBSTET")):
-                if any(
-                    keyword in procedure_text
-                    for keyword in ("CESAREAN", "C-SECTION", "C SECTION")
-                ):
-                    if ProcedureCategory.CESAREAN not in categories:
-                        categories.append(ProcedureCategory.CESAREAN)
-                elif ProcedureCategory.OTHER not in categories:
-                    categories.append(ProcedureCategory.OTHER)
-
-        # Handle multiple categories
-        if len(categories) > 1:
-            warnings.append(
-                f"Multiple procedure categories detected for services {services}: "
-                f"{[c.value for c in categories]}. Using first: {categories[0].value}"
-            )
-            return categories[0], warnings
-        if len(categories) == 1:
-            return categories[0], warnings
-        return ProcedureCategory.OTHER, warnings
+        return categorize_procedure(procedure, services)
 
     @staticmethod
     def normalize_emergent_flag(value: Any) -> bool:
@@ -228,7 +175,7 @@ class EnhancedCaseProcessor:
             return False
         return str(value).strip().upper() in {"E", "Y", "YES", "TRUE", "1"}
 
-    def process_row(self, row: pd.Series) -> ParsedCase:  # noqa: PLR0914
+    def process_row(self, row: pd.Series) -> ParsedCase:  # noqa: PLR0914, PLR0915
         """
         Process a single row into typed ParsedCase.
 
@@ -281,31 +228,49 @@ class EnhancedCaseProcessor:
 
         # Extract findings from procedure notes
         notes = row.get(self.column_map.procedure_notes)
+        procedure_text = row.get(self.column_map.procedure)
 
-        airway_mgmt, airway_findings = extract_airway_management_enhanced(notes)
+        airway_mgmt, airway_findings = extract_airway_management(notes)
         all_findings.extend(airway_findings)
         if airway_findings:
             confidence_scores.extend([f.confidence for f in airway_findings])
 
-        vascular, vascular_findings = extract_vascular_access_enhanced(notes)
+        vascular, vascular_findings = extract_vascular_access(notes)
         all_findings.extend(vascular_findings)
         if vascular_findings:
             confidence_scores.extend([f.confidence for f in vascular_findings])
 
-        monitoring, monitoring_findings = extract_monitoring_enhanced(notes)
+        # Extract monitoring from both notes and procedure fields
+        monitoring, monitoring_findings = extract_monitoring(notes)
         all_findings.extend(monitoring_findings)
         if monitoring_findings:
             confidence_scores.extend([f.confidence for f in monitoring_findings])
 
+        # Also check procedure field for monitoring (TEE often in procedure list)
+        if procedure_text:
+            monitoring_proc, monitoring_proc_findings = extract_monitoring(
+                procedure_text, source_field="procedure"
+            )
+            # Merge with existing monitoring, avoiding duplicates
+            for mon in monitoring_proc:
+                if mon not in monitoring:
+                    monitoring.append(mon)
+            all_findings.extend(monitoring_proc_findings)
+            if monitoring_proc_findings:
+                proc_confidence = [f.confidence for f in monitoring_proc_findings]
+                confidence_scores.extend(proc_confidence)
+
         # Calculate overall confidence
         if confidence_scores:
             overall_confidence = sum(confidence_scores) / len(confidence_scores)
-        # If no extractions, confidence is lower
+        # If no extractions, confidence depends on whether notes exist
         elif pd.isna(notes) or not str(notes).strip():
-            overall_confidence = 0.5  # Missing notes
+            overall_confidence = 0.7  # Missing notes (but not necessarily problematic)
             all_warnings.append("No procedure notes available for extraction")
         else:
-            overall_confidence = 0.8  # Notes present but no extractions
+            overall_confidence = (
+                0.9  # Notes present but no complex extractions (routine case)
+            )
 
         # Clean provider name
         provider = row.get(self.column_map.anesthesiologist)

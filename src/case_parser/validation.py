@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from .domain import ParsedCase
 
@@ -64,14 +67,19 @@ class ValidationReport:
         }
 
     def get_problematic_cases(
-        self, min_warnings: int = 1, max_confidence: float = 0.7
+        self, min_warnings: int = 1, max_confidence: float = 0.4
     ) -> list[ParsedCase]:
         """
         Get cases that have issues.
 
+        A case is considered problematic if it has warnings OR very low confidence.
+        Routine cases with moderate confidence (0.5-0.9) and no warnings are not
+        flagged as problematic.
+
         Args:
             min_warnings: Minimum number of warnings to be considered problematic
             max_confidence: Maximum confidence score to be considered problematic
+                (only applies if case has NO warnings)
 
         Returns:
             List of problematic cases
@@ -81,83 +89,136 @@ class ValidationReport:
             for case in self.cases
             if (
                 len(case.parsing_warnings) >= min_warnings
-                or case.confidence_score <= max_confidence
+                or (
+                    case.confidence_score < max_confidence
+                    and len(case.parsing_warnings) == 0
+                )
             )
         ]
+
+    @staticmethod
+    def _print_summary_section(console: Console, summary: dict[str, Any]):
+        """Print summary section of validation report."""
+        total = summary["total_cases"]
+        warnings_pct = summary["cases_with_warnings"] / total * 100 if total > 0 else 0
+        low_conf_pct = summary["low_confidence_cases"] / total * 100 if total > 0 else 0
+
+        console.print("[bold cyan]SUMMARY[/bold cyan]")
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column(style="bold", no_wrap=True)
+        table.add_column()
+
+        table.add_row("Total Cases:", str(total))
+        table.add_row(
+            "Cases with Warnings:",
+            f"{summary['cases_with_warnings']} ({warnings_pct:.1f}%)",
+        )
+        table.add_row(
+            "Low Confidence Cases:",
+            f"{summary['low_confidence_cases']} ({low_conf_pct:.1f}%)",
+        )
+        table.add_row("Average Confidence:", f"{summary['average_confidence']:.3f}")
+        console.print(table)
+        console.print()
+
+    @staticmethod
+    def _print_missing_fields_section(
+        console: Console, summary: dict[str, Any], total: int
+    ):
+        """Print missing fields section of validation report."""
+        if not any(summary["missing_fields"].values()):
+            return
+
+        console.print("[bold yellow]MISSING CRITICAL FIELDS[/bold yellow]")
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column(style="bold", no_wrap=True)
+        table.add_column()
+
+        for field, count in summary["missing_fields"].items():
+            if count > 0:
+                pct = count / total * 100 if total > 0 else 0
+                table.add_row(f"{field}:", f"{count} cases ({pct:.1f}%)")
+        console.print(table)
+        console.print()
+
+    @staticmethod
+    def _print_warning_types_section(console: Console, summary: dict[str, Any]):
+        """Print warning types section of validation report."""
+        if not summary["warning_types"]:
+            return
+
+        console.print("[bold yellow]WARNING TYPES (Top 10)[/bold yellow]")
+        table = Table(show_header=True, box=None, padding=(0, 2))
+        table.add_column("Count", justify="right", style="cyan")
+        table.add_column("Warning")
+
+        sorted_warnings = sorted(
+            summary["warning_types"].items(), key=itemgetter(1), reverse=True
+        )
+        for warning, count in sorted_warnings[:10]:
+            table.add_row(str(count), warning)
+        console.print(table)
+        console.print()
+
+    def _print_problematic_cases_section(self, console: Console):
+        """Print problematic cases section of validation report."""
+        problematic = self.get_problematic_cases()
+        if not problematic:
+            return
+
+        console.print(
+            f"[bold red]PROBLEMATIC CASES ({len(problematic)} cases)[/bold red]"
+        )
+        for i, case in enumerate(problematic[:20], 1):
+            missing_fields = ", ".join(case.get_missing_critical_fields()) or "None"
+            console.print(
+                f"\n[bold]{i}. Case ID:[/bold] {case.episode_id or 'UNKNOWN'}"
+            )
+            console.print(f"   [bold]Confidence:[/bold] {case.confidence_score:.3f}")
+            console.print(f"   [bold]Warnings ({len(case.parsing_warnings)}):[/bold]")
+            for warning in case.parsing_warnings:
+                console.print(f"     • {warning}")
+            console.print(f"   [bold]Missing fields:[/bold] {missing_fields}")
+
+        if len(problematic) > 20:
+            console.print(f"\n... and {len(problematic) - 20} more problematic cases")
+        console.print()
 
     def generate_text_report(self) -> str:
         """Generate human-readable text report."""
-        summary = self.get_summary()
-        total = summary["total_cases"]
-        warnings_pct = summary["cases_with_warnings"] / total * 100
-        low_conf_pct = summary["low_confidence_cases"] / total * 100
-
-        lines = [
-            "=" * 80,
-            "VALIDATION REPORT",
-            "=" * 80,
-            "",
-            "SUMMARY",
-            "-" * 80,
-            f"Total Cases: {total}",
-            f"Cases with Warnings: {summary['cases_with_warnings']} "
-            f"({warnings_pct:.1f}%)",
-            f"Low Confidence Cases: {summary['low_confidence_cases']} "
-            f"({low_conf_pct:.1f}%)",
-            f"Average Confidence: {summary['average_confidence']:.3f}",
-            "",
-            "MISSING CRITICAL FIELDS",
-            "-" * 80,
-        ]
-
-        # Summary statistics
-
-        # Missing fields
-        for field, count in summary["missing_fields"].items():
-            if count > 0:
-                pct = count / summary["total_cases"] * 100
-                lines.append(f"  {field}: {count} cases ({pct:.1f}%)")
-        lines.append("")
-
-        # Warning types
-        if summary["warning_types"]:
-            lines.extend(("WARNING TYPES (Top 10)", "-" * 80))
-            sorted_warnings = sorted(
-                summary["warning_types"].items(), key=itemgetter(1), reverse=True
-            )
-            for warning, count in sorted_warnings[:10]:
-                lines.append(f"  [{count:3d}] {warning}")
-            lines.append("")
-
-        # Problematic cases details
-        problematic = self.get_problematic_cases()
-        if problematic:
-            lines.extend((f"PROBLEMATIC CASES ({len(problematic)} cases)", "-" * 80))
-            for i, case in enumerate(problematic[:20], 1):  # Show first 20
-                self.print_problematic_case(case, i, lines)
-
-            if len(problematic) > 20:
-                lines.append(
-                    f"\n... and {len(problematic) - 20} more problematic cases"
-                )
-            lines.append("")
-
-        lines.extend(("=" * 80, "END OF REPORT", "=" * 80))
-
-        return "\n".join(lines)
-
-    @staticmethod
-    def print_problematic_case(case: ParsedCase, i: int, lines: list[str | Any]):
-        missing_fields = ", ".join(case._get_missing_critical_fields()) or "None"
-        lines.extend(
-            (
-                f"\n{i}. Case ID: {case.episode_id or 'UNKNOWN'}",
-                f"   Confidence: {case.confidence_score:.3f}",
-                f"   Warnings ({len(case.parsing_warnings)}):",
-            )
+        console = Console(
+            file=None, width=100, force_terminal=False, legacy_windows=False
         )
-        lines.extend(f"     - {warning}" for warning in case.parsing_warnings)
-        lines.append(f"   Missing fields: {missing_fields}")
+
+        with console.capture() as capture:
+            summary = self.get_summary()
+
+            # Header
+            console.print(
+                Panel(
+                    "[bold]VALIDATION REPORT[/bold]",
+                    border_style="cyan",
+                    expand=False,
+                )
+            )
+            console.print()
+
+            # Print sections
+            self._print_summary_section(console, summary)
+            self._print_missing_fields_section(console, summary, summary["total_cases"])
+            self._print_warning_types_section(console, summary)
+            self._print_problematic_cases_section(console)
+
+            # Footer
+            console.print(
+                Panel(
+                    "[bold]END OF REPORT[/bold]",
+                    border_style="cyan",
+                    expand=False,
+                )
+            )
+
+        return capture.get()
 
     def generate_json_report(self) -> dict[str, Any]:
         """Generate machine-readable JSON report."""
@@ -231,7 +292,7 @@ class ValidationReport:
                     "Warnings": "; ".join(summary["warnings"]),
                     "Confidence Score": f"{summary['confidence_score']:.3f}",
                     "Low Confidence": "Yes" if summary["is_low_confidence"] else "No",
-                    "Missing Fields": ", ".join(summary["missing_fields"]) or "None",
+                    "Missing Fields": "; ".join(summary["missing_fields"]) or "None",
                 }
             )
         return pd.DataFrame(rows)

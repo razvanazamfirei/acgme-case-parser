@@ -65,3 +65,5 @@ dmypy.json
 
 # uv
 .uv/
+acgme_config.json
+node_modules/
