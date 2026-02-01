@@ -2,7 +2,7 @@
  * Confirmation dialog management
  */
 
-const Confirmation = {
+export const Confirmation = {
   show() {
     const caseData = Form.getData();
 

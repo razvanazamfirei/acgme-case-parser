@@ -31,7 +31,7 @@
       "recommended": true,
       "style": { "useConst": "warn" },
       "suspicious": { "noExplicitAny": "off" },
-      "correctness": { "noUnusedVariables": "off" }
+      "correctness": { "noUnusedVariables": "warn" }
     }
   },
   "javascript": {

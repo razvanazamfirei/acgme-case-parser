@@ -2,7 +2,7 @@
  * Settings management
  */
 
-const Settings = {
+export const Settings = {
   readFromUI() {
     return {
       defaultInstitution: UI.get(DOM.settingInstitution).value,

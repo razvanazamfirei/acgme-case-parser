@@ -2,7 +2,7 @@
  * Application state management
  */
 
-const State = {
+export const State = {
   cases: [],
   currentIndex: 0,
   caseStatuses: {},

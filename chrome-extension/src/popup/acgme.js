@@ -2,7 +2,7 @@
  * ACGME form filling
  */
 
-const ACGMEForm = {
+export const ACGMEForm = {
   async fill(andSubmit = false) {
     UI.hideStatus();
     const caseData = Form.getData();

@@ -96,9 +96,7 @@ const updatedHtml = popupHtml
   .replace(
     /<script src="popup\/constants\.js"><\/script>\s*<script src="popup\/state\.js"><\/script>\s*<script src="popup\/storage\.js"><\/script>\s*<script src="popup\/ui\.js"><\/script>\s*<script src="popup\/excel\.js"><\/script>\s*<script src="popup\/form\.js"><\/script>\s*<script src="popup\/navigation\.js"><\/script>\s*<script src="popup\/settings\.js"><\/script>\s*<script src="popup\/confirmation\.js"><\/script>\s*<script src="popup\/acgme\.js"><\/script>\s*<script src="popup\/app\.js"><\/script>/,
     '<script src="popup.js"></script>',
-  )
-  .replace(/src="popup\//g, 'src="');
-
+  );
 await Bun.write(join(distDir, "popup.html"), updatedHtml);
 
 console.log("[OK] Updated popup.html");
@@ -110,7 +108,7 @@ if (isWatch) {
   const watcher = Bun.watch("src");
 
   for await (const event of watcher) {
-    console.log(`\n[WATCH] Change detected, rebuilding...`);
+    console.log(`\n[WATCH] Change detected, rebuilding...`, event);
     // Re-run build
     await import("./build.js");
   }

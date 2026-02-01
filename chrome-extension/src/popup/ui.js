@@ -2,7 +2,7 @@
  * UI utilities and helpers
  */
 
-const UI = {
+export const UI = {
   get(id) {
     return document.getElementById(id);
   },

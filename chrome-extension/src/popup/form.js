@@ -2,7 +2,7 @@
  * Form manipulation and data handling
  */
 
-const Form = {
+export const Form = {
   setSelect(selectId, value) {
     const select = UI.get(selectId);
     if (!select || !value) {
