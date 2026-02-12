@@ -18,11 +18,7 @@ export const Navigation = {
     Form.populate(State.getCurrentCase());
     this.update();
     UI.hideStatus();
-    // Disable Submit button when navigating to new case
-    const submitBtn = UI.get(DOM.fillSubmitBtn);
-    if (submitBtn) {
-      submitBtn.disabled = true;
-    }
+    // Submit button is always enabled now - removed auto-disable
     Storage.saveState();
   },
 

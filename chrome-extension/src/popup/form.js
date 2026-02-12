@@ -162,12 +162,12 @@ export const Form = {
       caseData.procedureCategory,
     );
 
-    const airwayMatch = this.setCheckboxGroup("airway", caseData.airway);
-    const vascularMatch = this.setCheckboxGroup(
+    const _airwayMatch = this.setCheckboxGroup("airway", caseData.airway);
+    const _vascularMatch = this.setCheckboxGroup(
       "vascular",
       caseData.vascularAccess,
     );
-    const monitoringMatch = this.setCheckboxGroup(
+    const _monitoringMatch = this.setCheckboxGroup(
       "monitoring",
       caseData.monitoring,
     );

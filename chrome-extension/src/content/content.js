@@ -1,6 +1,8 @@
 // ACGME Case Entry Form Filler
 // Maps standardized output from Python case-parser to ACGME form codes
 
+import fuzzysort from "fuzzysort";
+
 // Patient age category mapping
 const AGE_MAP = {
   a: "30",
@@ -113,7 +115,23 @@ const INSTITUTION_MAP = {
 function getFieldId(type) {
   if (type === "caseId") {
     // Try multiple approaches to find the Case ID field
-    // 1. Check if the page has the field ID in JavaScript globals
+    // 1. Look for input with maxlength="25" within parent of "Case ID" label (most reliable)
+    const labels = document.querySelectorAll("label.form-label");
+    for (const label of labels) {
+      if (label.textContent.includes("Case ID")) {
+        const container = label.parentElement;
+        if (container) {
+          const input = container.querySelector(
+            'input[type="text"][maxlength="25"]',
+          );
+          if (input?.id) {
+            return input.id;
+          }
+        }
+      }
+    }
+
+    // 2. Check if the page has the field ID in JavaScript globals
     if (
       typeof caseEntryApp !== "undefined" &&
       caseEntryApp?.globals?.CaseEntry99
@@ -124,32 +142,28 @@ function getFieldId(type) {
       }
     }
 
-    // 2. Try partial ID match (more flexible)
+    // 3. Try partial ID match (more flexible)
     const byPartialId = document.querySelector('input[id^="71291"]');
     if (byPartialId) {
       return byPartialId.id;
     }
 
-    // 3. Try finding by label text "Case ID"
-    const labels = document.querySelectorAll('label.form-label');
-    for (const label of labels) {
-      if (label.textContent.includes("Case ID")) {
-        const input = label.parentElement.querySelector(
-          'input[type="text"][maxlength="25"]',
-        );
-        if (input) {
-          return input.id;
-        }
-      }
-    }
-
-    // 4. Fallback to old selector
-    const el = document.querySelector('input[id^="7129"]');
+    // 4. Fallback: first input with maxlength="25"
+    const el = document.querySelector('input[type="text"][maxlength="25"]');
     return el ? el.id : null;
   }
 
   if (type === "date") {
-    // 1. Check if the page has the field ID in JavaScript globals
+    // 1. Look for input within ProcedureDate class (most reliable)
+    const procedureDateDiv = document.querySelector(".ProcedureDate");
+    if (procedureDateDiv) {
+      const input = procedureDateDiv.querySelector('input[type="text"]');
+      if (input?.id) {
+        return input.id;
+      }
+    }
+
+    // 2. Check if the page has the field ID in JavaScript globals
     if (
       typeof caseEntryApp !== "undefined" &&
       caseEntryApp?.globals?.CaseEntry89
@@ -160,13 +174,13 @@ function getFieldId(type) {
       }
     }
 
-    // 2. Try partial ID match
+    // 3. Try partial ID match
     const byPartialId = document.querySelector('input[id^="5b1ce"]');
     if (byPartialId) {
       return byPartialId.id;
     }
 
-    // 3. Fallback to old selector
+    // 4. Fallback to old selector
     const el = document.querySelector('input[id^="5b1c"]');
     return el ? el.id : null;
   }
@@ -236,6 +250,8 @@ function uncheckAllProcedures() {
   });
 }
 
+// Use fuzzysort for fuzzy matching (vendored in bundle)
+
 // Attending lookup with high-confidence matching only
 function findAttendingId(name, returnAllMatches = false) {
   const select = document.getElementById("Attendings");
@@ -244,19 +260,22 @@ function findAttendingId(name, returnAllMatches = false) {
   }
 
   const normalize = (text) =>
-    text
-      .toLowerCase()
-      .replace(/[.,]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    text.toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
 
   const nameNormalized = normalize(name);
   const matches = [];
 
-  // Extract name parts (expecting "Last, First" but tolerant of spacing)
+  // Extract name parts (expecting "Last, First Middle" but tolerant of spacing)
   const nameParts = nameNormalized.split(/\s+/).filter(Boolean);
   const lastName = nameParts[0] || "";
   const firstName = nameParts[1] || "";
+  const middleName = nameParts[2] || "";
+
+  // Helper to check if a name part could be an initial for another
+  const isInitialFor = (initial, fullName) => {
+    if (!initial || !fullName) return false;
+    return fullName.startsWith(initial.charAt(0));
+  };
 
   for (const opt of select.options) {
     if (!opt.value || opt.value === "") {
@@ -264,6 +283,10 @@ function findAttendingId(name, returnAllMatches = false) {
     }
     const optText = opt.text;
     const optNormalized = normalize(optText);
+    const optParts = optNormalized.split(/\s+/).filter(Boolean);
+    const optLastName = optParts[0] || "";
+    const optFirstName = optParts[1] || "";
+    const optMiddleName = optParts[2] || "";
 
     // Exact match (normalized)
     if (optNormalized === nameNormalized) {
@@ -272,14 +295,54 @@ function findAttendingId(name, returnAllMatches = false) {
       } else {
         return opt.value;
       }
+      continue;
     }
-    // High-confidence prefix match (e.g., missing middle initial), require first+last
-    else if (
-      lastName &&
-      firstName &&
-      optNormalized.startsWith(`${lastName} ${firstName}`)
-    ) {
-      matches.push({ value: opt.value, text: opt.text, matchType: "prefix" });
+
+    // Check for last name + first name match (with middle name/initial flexibility)
+    if (lastName && firstName && optLastName === lastName) {
+      // First name exact match
+      const firstNameMatch = optFirstName === firstName;
+
+      // Check middle name scenarios
+      let middleNameMatch = false;
+      if (!middleName && !optMiddleName) {
+        // Neither has middle name
+        middleNameMatch = true;
+      } else if (middleName && optMiddleName) {
+        // Both have middle names - check if one is initial of other
+        if (middleName === optMiddleName) {
+          middleNameMatch = true;
+        } else if (
+          isInitialFor(middleName, optMiddleName) ||
+          isInitialFor(optMiddleName, middleName)
+        ) {
+          middleNameMatch = true;
+        }
+      } else if (middleName && !optMiddleName) {
+        // Input has middle name but option doesn't - still match
+        middleNameMatch = true;
+      } else if (!middleName && optMiddleName) {
+        // Option has middle name but input doesn't - still match
+        middleNameMatch = true;
+      }
+
+      // Check if first name could be initial match
+      let firstInitialMatch = false;
+      if (
+        !firstNameMatch &&
+        (isInitialFor(firstName, optFirstName) ||
+          isInitialFor(optFirstName, firstName))
+      ) {
+        firstInitialMatch = true;
+      }
+
+      if ((firstNameMatch || firstInitialMatch) && middleNameMatch) {
+        matches.push({
+          value: opt.value,
+          text: opt.text,
+          matchType: firstNameMatch ? "name-match" : "initial-match",
+        });
+      }
     }
   }
 
@@ -287,12 +350,69 @@ function findAttendingId(name, returnAllMatches = false) {
     return matches;
   }
 
-  // Return only if there's a single high-confidence non-exact match
-  const nonExactMatches = matches.filter((m) => m.matchType !== "exact");
-  if (nonExactMatches.length === 1) {
-    return nonExactMatches[0].value;
+  // Prioritize exact matches, then name matches, then initial matches
+  const exactMatches = matches.filter((m) => m.matchType === "exact");
+  if (exactMatches.length === 1) {
+    return exactMatches[0].value;
   }
-  return null;
+
+  const nameMatches = matches.filter((m) => m.matchType === "name-match");
+  if (nameMatches.length === 1) {
+    return nameMatches[0].value;
+  }
+
+  const initialMatches = matches.filter((m) => m.matchType === "initial-match");
+  if (initialMatches.length === 1) {
+    return initialMatches[0].value;
+  }
+
+  // Fallback: Try fuzzy matching with high threshold
+  const options = Array.from(select.options)
+    .filter((opt) => opt.value && opt.value !== "")
+    .map((opt) => ({ value: opt.value, text: opt.text }));
+
+  if (options.length === 0) {
+    return null;
+  }
+
+  // Use fuzzysort for fuzzy matching
+  const results = fuzzysort.go(nameNormalized, options, {
+    key: "text",
+    threshold: -10000, // High threshold (lower score = better match)
+    limit: 5, // Only consider top 5 matches
+  });
+
+  if (results.length === 0) {
+    return null;
+  }
+
+  // Convert fuzzysort score to 0-1 scale (higher is better)
+  // fuzzysort scores are negative (closer to 0 is better)
+  const normalizeScore = (score) => {
+    // Typical scores range from -1000 (poor) to 0 (perfect)
+    return Math.max(0, Math.min(1, (score + 1000) / 1000));
+  };
+
+  const topMatch = results[0];
+  const topScore = normalizeScore(topMatch.score);
+
+  // Require 85% similarity
+  if (topScore < 0.85) {
+    return null;
+  }
+
+  // If there's a second match, require 10% difference
+  if (results.length > 1) {
+    const secondScore = normalizeScore(results[1].score);
+    if (topScore - secondScore < 0.1) {
+      return null; // Too ambiguous
+    }
+  }
+
+  console.log(
+    `Fuzzy match found: "${name}" -> "${topMatch.obj.text}" (${(topScore * 100).toFixed(1)}%)`,
+  );
+  return topMatch.obj.value;
 }
 
 // Get available attending options for display
@@ -660,7 +780,7 @@ function submitCase() {
 }
 
 // Listen for messages from the popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.action === "fillCase") {
     try {
       const result = fillCase(message.data);

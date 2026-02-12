@@ -84,14 +84,14 @@ const BeastMode = {
       "border-orange-500",
       "beast-mode-active",
     );
-    text.textContent = "⏸️ STOP BEAST MODE";
+    text.textContent = "STOP BEAST MODE";
 
     // Disable other action buttons during BEAST mode
     UI.get(DOM.skipBtn).disabled = true;
     UI.get(DOM.fillBtn).disabled = true;
     UI.get(DOM.fillSubmitBtn).disabled = true;
 
-    UI.showStatus("🔥 BEAST MODE ACTIVATED - Processing cases...", "info");
+    UI.showStatus("BEAST MODE ACTIVATED - Processing cases...", "info");
 
     try {
       await this.processAllPending();
@@ -118,14 +118,14 @@ const BeastMode = {
       "beast-mode-active",
     );
     btn.classList.add("bg-blue-500", "hover:bg-blue-600", "border-blue-500");
-    text.textContent = "▶️ CONTINUE BEAST MODE";
+    text.textContent = "CONTINUE BEAST MODE";
 
     // Re-enable action buttons so user can fix things
     UI.get(DOM.skipBtn).disabled = false;
     UI.get(DOM.fillBtn).disabled = false;
     UI.get(DOM.fillSubmitBtn).disabled = false;
 
-    UI.showStatus(message || "⏸️ BEAST mode paused", "info");
+    UI.showStatus(message || "BEAST mode paused", "info");
   },
 
   resume() {
@@ -141,14 +141,14 @@ const BeastMode = {
       "border-orange-500",
       "beast-mode-active",
     );
-    text.textContent = "⏸️ STOP BEAST MODE";
+    text.textContent = "STOP BEAST MODE";
 
     // Disable action buttons again
     UI.get(DOM.skipBtn).disabled = true;
     UI.get(DOM.fillBtn).disabled = true;
     UI.get(DOM.fillSubmitBtn).disabled = true;
 
-    UI.showStatus("🔥 BEAST MODE RESUMED - Processing cases...", "info");
+    UI.showStatus("BEAST MODE RESUMED - Processing cases...", "info");
 
     // Call the resume callback if it exists
     if (this.resumeCallback) {
@@ -176,7 +176,7 @@ const BeastMode = {
       "border-blue-500",
     );
     btn.classList.add("bg-red-500", "hover:bg-red-600", "border-red-500");
-    text.textContent = "🔥 START BEAST MODE";
+    text.textContent = "START BEAST MODE";
 
     // Re-enable action buttons
     UI.get(DOM.skipBtn).disabled = false;
@@ -216,14 +216,16 @@ const BeastMode = {
 
       // Navigate to this case
       Navigation.goToCase(i);
-      await new Promise((resolve) => setTimeout(resolve, 100)); // Brief pause for UI update
+
+      // Wait for page to fully load before starting fill/submit process
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // 1.5 second delay for page load
 
       // Validate - pause if validation fails
       const validation = Form.validate();
       if (!validation.isValid) {
         UI.showValidation(validation);
         this.pause(
-          `⏸️ BEAST mode paused at case ${i + 1}/${totalCases}. Please complete required fields (${validation.missing.join(", ")}) and click CONTINUE.`,
+          `BEAST mode paused at case ${i + 1}/${totalCases}. Please complete required fields (${validation.missing.join(", ")}) and click CONTINUE.`,
         );
 
         // Wait for user to fix and continue
@@ -242,24 +244,21 @@ const BeastMode = {
 
       try {
         // Fill and submit the case
-        UI.showStatus(
-          `🔥 Processing case ${i + 1}/${totalCases}...`,
-          "info",
-        );
+        UI.showStatus(`Processing case ${i + 1}/${totalCases}...`, "info");
 
         const result = await ACGMEForm.fill(true);
 
         if (result?.success && result?.submitted) {
           processed++;
           UI.showStatus(
-            `✓ Case ${i + 1}/${totalCases} submitted! (${processed} total)`,
+            `Case ${i + 1}/${totalCases} submitted! (${processed} total)`,
             "success",
           );
         } else {
           console.warn(`Case ${i + 1} failed to submit:`, result);
           // Pause on submission failure
           this.pause(
-            `⏸️ Case ${i + 1} failed to submit. Check the ACGME form and click CONTINUE to retry or STOP to end.`,
+            `Case ${i + 1} failed to submit. Check the ACGME form and click CONTINUE to retry or STOP to end.`,
           );
           await new Promise((resolve) => {
             this.resumeCallback = resolve;
@@ -274,13 +273,12 @@ const BeastMode = {
       } catch (error) {
         console.error(`Error processing case ${i + 1}:`, error);
         this.pause(
-          `⏸️ Error processing case ${i + 1}: ${error.message}. Click CONTINUE to retry or STOP to end.`,
+          `Error processing case ${i + 1}: ${error.message}. Click CONTINUE to retry or STOP to end.`,
         );
         await new Promise((resolve) => {
           this.resumeCallback = resolve;
         });
         i--; // Retry this case
-        continue;
       }
     }
 
@@ -292,7 +290,7 @@ const BeastMode = {
     if (nextPending !== null) {
       Navigation.goToCase(nextPending);
       UI.showStatus(
-        `✓ Processed ${processed} cases! ${State.getStats().pending} cases remaining.`,
+        `Processed ${processed} cases! ${State.getStats().pending} cases remaining.`,
         "success",
       );
     } else {
@@ -347,19 +345,31 @@ const Session = {
       // Clear checkboxes and radios
       document
         .querySelectorAll('input[type="checkbox"][name="airway"]')
-        .forEach((cb) => (cb.checked = false));
+        .forEach((cb) => {
+          cb.checked = false;
+        });
       document
         .querySelectorAll('input[type="checkbox"][name="vascular"]')
-        .forEach((cb) => (cb.checked = false));
+        .forEach((cb) => {
+          cb.checked = false;
+        });
       document
         .querySelectorAll('input[type="checkbox"][name="monitoring"]')
-        .forEach((cb) => (cb.checked = false));
+        .forEach((cb) => {
+          cb.checked = false;
+        });
       document
         .querySelectorAll('input[type="radio"][name="difficultAirway"]')
-        .forEach((radio) => (radio.checked = radio.value === ""));
+        .forEach((radio) => {
+          radio.checked = radio.value === "";
+        });
       document
-        .querySelectorAll('input[type="radio"][name="lifeThreateningPathology"]')
-        .forEach((radio) => (radio.checked = radio.value === ""));
+        .querySelectorAll(
+          'input[type="radio"][name="lifeThreateningPathology"]',
+        )
+        .forEach((radio) => {
+          radio.checked = radio.value === "";
+        });
 
       // Reset navigation counters
       const navElements = [
@@ -522,15 +532,13 @@ const EventHandlers = {
         }
       }
 
-      UI.get(DOM.fillSubmitBtn).disabled = true;
+      const submitBtn = UI.get(DOM.fillSubmitBtn);
+      submitBtn.disabled = true;
       try {
         await ACGMEForm.fill(true);
       } finally {
-        if (
-          State.getCaseStatus(State.currentIndex) !== STATUS_TYPES.submitted
-        ) {
-          UI.get(DOM.fillSubmitBtn).disabled = false;
-        }
+        // Always re-enable the button after submission attempt
+        submitBtn.disabled = false;
       }
     });
 
