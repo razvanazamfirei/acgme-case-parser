@@ -14,6 +14,24 @@ medical data.
 The project includes a Chrome extension for auto-filling ACGME web forms with
 parsed case data.
 
+## Features
+
+### Batch Processing
+
+The tool can process multiple Excel files from a directory and combine them into a single output file:
+
+- **Directory Input**: Specify a directory path instead of a single file
+- **Automatic Discovery**: Finds all `.xlsx` and `.xls` files in the directory
+- **Combined Output**: All cases from all files are merged into one output file
+- **Source Tracking**: Use `--add-source-column` to add a "Source File" column that tracks which file each case came from
+- **Validation**: Each file is validated separately, with a combined summary
+
+**Use Cases**:
+- Combining multiple months of case logs into one file
+- Processing cases from multiple residents
+- Merging data from different hospital sites
+- Batch processing for annual reports
+
 ## Commands
 
 ### Development Setup
@@ -35,11 +53,17 @@ bun install
 ### Running the Application
 
 ```bash
-# Direct invocation
+# Direct invocation (single file)
 python main.py input.xlsx output.xlsx
 
-# Using installed command
+# Using installed command (single file)
 case-parser input.xlsx output.xlsx
+
+# Process all Excel files in a directory
+case-parser /path/to/excel/files/ combined_output.xlsx
+
+# Process directory with source file tracking
+case-parser /path/to/excel/files/ combined_output.xlsx --add-source-column
 
 # With validation report
 case-parser input.xlsx output.xlsx --validation-report validation.txt

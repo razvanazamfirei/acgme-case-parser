@@ -1,0 +1,3243 @@
+<html>
+  <head>
+    <title>ACGME - Accreditation Data System (ADS)</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link
+      href="//netdna.bootstrapcdn.com/font-awesome/3.2.1/css/font-awesome.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-KyZXEAg3QhqLMpG8r+8fhAXLRk2vvoC2f3B09zVXn8CA5QIVfZOJ3BCsw2P0p/We"
+      crossorigin="anonymous"
+    />
+    <link
+      href="/ads/bundles/core-css?v=We5MBlCBji7y63szDgPBwO_mQZDYdPVpZZP0H_OlYFY1"
+      rel="stylesheet"
+    />
+    <link
+      href="/ads/Content/css/bootstrap-alt-5.1.0.css"
+      rel="stylesheet"
+      type="text/css"
+    />
+    <link
+      href="/ads/Content/css/bootstrap-alt.css"
+      rel="stylesheet"
+      type="text/css"
+    />
+
+    <link rel="icon" type="image/x-icon" href="Content/imgs/favicon.ico" />
+    <script
+      src="https://code.jquery.com/jquery-3.6.0.min.js"
+      integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+      crossorigin="anonymous"
+    ></script>
+
+    <script
+      type="text/javascript"
+      src="https://ajax.aspnetcdn.com/ajax/jquery.ui/1.13.2/jquery-ui.min.js"
+    ></script>
+    <script src="https://apps.acgme.org/ads/Scripts/libs/external/jquery.ui.button.js"></script>
+    <script type="text/javascript">
+      $.widget.bridge("uibutton", $.ui.button);
+    </script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-U1DAWAznBHeqEIlVSCgzq+c9gqGAJn5c/t99JyeKa9xxaYpSvHU5awsuZVVFIhvj"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      type="text/javascript"
+      src="https://ajax.aspnetcdn.com/ajax/jquery.validate/1.8.1/jquery.validate.min.js"
+    ></script>
+    <script
+      type="text/javascript"
+      src="https://ajax.aspnetcdn.com/ajax/jquery.validate/1.8.1/additional-methods.js"
+    ></script>
+    <script
+      type="text/javascript"
+      src="https://ajax.aspnetcdn.com/ajax/mvc/5.2/jquery.validate.unobtrusive.min.js"
+    ></script>
+    <script src="https://apps.acgme.org/ads/bundles/core-external?v=znbtt2zAyzWSCTOcgjCD6pCJI0Pvq0qvbjhOoEt1vjM1"></script>
+    <script src="https://apps.acgme.org/ads/bundles/core-internal?v=KePMNZIla50fGW773DccUym6n5oRptL9aBSBz9NJkPo1"></script>
+    <script type="text/javascript">
+      window._baseUrl = "/ads/";
+    </script>
+  </head>
+  <body class="no-admin-bar">
+    <input
+      id="TokenExpirationTime"
+      name="TokenExpirationTime"
+      type="hidden"
+      value="1770022036"
+    />
+    <input
+      id="B2CSingleSignoutUrl"
+      name="B2CSingleSignoutUrl"
+      type="hidden"
+      value="https://acgmecloud.org/logout"
+    />
+
+    <div id="simpleModalPlaceHolder"></div>
+
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+      <div
+        id="simpleToastPlaceHolder"
+        class="text-danger toast hide"
+        data-bs-autohide="false"
+      >
+        <div class="toast-header text-danger">
+          <strong class="me-auto">Login Session Expiring</strong>
+        </div>
+        <div class="toast-body" id="simpleToastBody"></div>
+      </div>
+    </div>
+    <div id="page-wrapper">
+      <div id="page-container" style="margin-right: 10px; margin-left: 10px">
+        <div id="page-header">
+          <div id="acgme-logo-anchor">
+            <a id="acgme-logo" href="/ads/">
+              <img
+                src="/ads/Content/imgs/acgme-logo-white.svg"
+                alt="ACGME"
+                onerror="this.onerror=null; this.src='/ads/Content/imgs/acgme-logo-white.gif'"
+              />
+            </a>
+
+            <ul class="nav nav-pills nav-profile float-end">
+              <li>
+                <a
+                  class="nav-link link-external-cloud"
+                  target="_blank"
+                  href="https://residentfellow.zendesk.com/hc/en-us"
+                  title="Help"
+                  data-external-content="Click the Resident/Fellow Help Center button or the ACGME Cloud Support button to visit these Help Centers."
+                  data-external-title="Resident/Fellow"
+                  >Help Center</a
+                >
+              </li>
+
+              <li class="nav-item dropdown">
+                <a
+                  class="nav-link dropdown-toggle"
+                  data-bs-toggle="dropdown"
+                  href="javascript:;"
+                >
+                  <i class="icon-user icon-fixed-width" aria-hidden="true"></i>
+                  <i class="icon-angle-down icon-large" aria-hidden="true"></i>
+                </a>
+                <ul class="dropdown-menu">
+                  <li class="no-wrap">
+                    <h6 class="dropdown-header">Welcome, Razvan Azamfirei</h6>
+                  </li>
+
+                  <li class="dropdown-divider"></li>
+
+                  <li>
+                    <a class="dropdown-item" href="/ads/Other/GetUserHighlights"
+                      >Messages</a
+                    >
+                  </li>
+
+                  <li class="dropdown-divider"></li>
+                  <li>
+                    <a
+                      class="dropdown-item link-external-mfa"
+                      target="_blank"
+                      href="https://acgmecloud.org/profile/"
+                      title="Change MFA Method"
+                      data-external-title="ACGME Cloud"
+                      data-external-content="You will be directed to your ACGME Cloud profile to reset your preferred multi-factor authentication method. Do you want to proceed?"
+                      >Change MFA Method</a
+                    >
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="/ads/Other/ChangePassword"
+                      >Change Password</a
+                    >
+                  </li>
+                  <li>
+                    <a
+                      class="dropdown-item link-external"
+                      data-external-content="Click the Continue button to contact support."
+                      href="https://support.acgmecloud.org/hc/en-us/requests/new?ticket_form_id=360002923214"
+                      target="_blank"
+                    >
+                      Contact Support
+                    </a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="/ads/CaseLogs/Agreement/Show"
+                      >View User Agreement</a
+                    >
+                  </li>
+
+                  <li class="buildNotes">
+                    <a
+                      class="dropdown-item"
+                      href="/ads/SharedArea/BuildNotes/Index"
+                      >Software Updates</a
+                    >
+                  </li>
+                </ul>
+              </li>
+
+              <li>
+                <a
+                  class="nav-link"
+                  href="javascript:void(0)"
+                  onclick="Logoff();"
+                >
+                  <i class="icon-signout d-lg-none" aria-hidden="true"></i>
+                  <span class="d-none d-lg-inline-block">Logout</span>
+                </a>
+              </li>
+            </ul>
+
+            <script type="text/javascript">
+              function Logoff() {
+                setTimeout(() => {
+                  window.location.href = "/ads/Other/LogoutAndClearSession";
+                }, 500);
+              }
+              var __showContextSwitch__ = (data) => {
+                $a.ui.simple.confirm(
+                  "Switch Account",
+                  "<div class='alert alert-danger'><label class='form-label'>Important Note About Multiple Accounts</label>" +
+                    "<div>If you have multiple accounts, please <strong>avoid opening them in separate tabs or windows</strong>. Doing so can cause issues with your session and may log you out unexpectedly. Attempting to edit data for different organizations in different tabs may result in overwritten or lost data.</div>" +
+                    "</div>" +
+                    "<label class='form-label'>You will be logged into:</label>" +
+                    "<dl class='inline-block'>" +
+                    "<dt>Organization Code</dt><dd>" +
+                    data.userLinkCode +
+                    "</dd>" +
+                    "<dt>Organization Name</dt><dd>" +
+                    data.userLinkName +
+                    "</dd>" +
+                    "</dl>",
+                  null,
+                  () => {
+                    //if (document.getElementById('__defaultOrg__').checked) {
+                    //    data.userLinkHref = data.userLinkHref + "&setToDefault=true";
+                    //}
+                    window.location.href = data.userLinkHref;
+                  },
+                  "Confirm",
+                  null,
+                  null,
+                  true,
+                );
+              };
+              $(() => {
+                $(".user-switch a:link").on("click", function (e) {
+                  e.preventDefault();
+                  var data = {
+                    userLinkHref: $(this).attr("href"),
+                    userLinkRole: $(this).attr("data-role"),
+                    userLinkCode: $(this).attr("data-orgCode"),
+                    userLinkName: $(this).attr("data-orgName"),
+                  };
+                  __showContextSwitch__(data);
+                });
+                $(".user-switch a:link").on("mousedown", function (e) {
+                  if (e.which === 2) {
+                    e.preventDefault();
+                    var data = {
+                      userLinkHref: $(this).attr("href"),
+                      userLinkRole: $(this).attr("data-role"),
+                      userLinkCode: $(this).attr("data-orgCode"),
+                      userLinkName: $(this).attr("data-orgName"),
+                    };
+                    __showContextSwitch__(data);
+                    return false;
+                  }
+                });
+              });
+            </script>
+            <div id="no-top-navigation-buffer">&nbsp;</div>
+          </div>
+        </div>
+
+        <div id="tab-navigation">
+          <ul
+            id="tab-navigation-menu"
+            class="nav nav-tabs no-top-navigation-buffer"
+          >
+            <li class="nav-item dropdown active">
+              <a
+                class="nav-link dropdown-toggle active"
+                href="/ads/CaseLogs/Default/Landing"
+              >
+                Case Logs
+                <span
+                  class="icon-large icon-angle-down"
+                  aria-hidden="true"
+                ></span>
+              </a>
+              <ul class="dropdown-menu">
+                <li>
+                  <h6 class="dropdown-header">Cases</h6>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="/ads/CaseLogs/CaseEntry/Insert"
+                    >Add</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="/ads/CaseLogs/CaseSearch/Search"
+                    >Search/Edit</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="/ads/CaseLogs/UpdateProcedureYear/Update"
+                    >Update Case Year</a
+                  >
+                </li>
+                <li class="dropdown-divider"></li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="/ads/CaseLogs/Reports/GetReportList"
+                    >Download/Reports</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="/ads/CaseLogs/Default/ReferenceMaterials"
+                    >Reference Materials</a
+                  >
+                </li>
+              </ul>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/ads/ResidentPortal"> Profile </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link"
+                href="/ads/ResidentPortal/PortalHome/Milestones"
+              >
+                Milestones
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/ads/ResidentPortal/PortalHome/Surveys">
+                Surveys
+              </a>
+            </li>
+          </ul>
+        </div>
+        <div id="column-container">
+          <div id="content-panel-wrapper">
+            <div id="content-panel" class="full-width">
+              <script id="search-result-tmpl" type="text/x-jquery-tmpl">
+                    {{if IsDiagnosisOrDiagnostic}}
+                    <tr class="warning" data-code-id="${CodeId}" data-area-id="${AreaId}" data-type-id="${TypeId}" data-type-to-code-id="${TypeToCodeId}" data-def-cat-short-names="${DefCatShortNames}" data-max-qty-allowed="${MaxQtyAllowed}">
+                        <td id="code-value">&nbsp;</td>
+                        <td id="code-description">
+                            <span id="code-description-text">${CodeDescription}</span>
+                            <span id="def-cats"></span>
+                            {{if HasCodeAttributes && !IsManagedFavorites}}
+                            <br />
+                            {{each CodeAttributes}}
+                            <label class="codeAttributeBtnk checkbox inline padding-top-4px"><input type="checkbox" class="cbCodeAttribute codeAttributeBtn" value="${Id}" />${Name}</label>
+                            {{/each}}
+                            {{/if}}
+                        </td>
+                        {{if IsFavoritesEnabled }}
+                        <td>${AreaName}</td>
+                        <td id="typeName">${TypeName}</td>
+                        <td class="text-center">
+                            <button  data-bs-toggle="popover" data-bs-container="body" data-bs-trigger="hover" data-bs-placement="top" data-bs-html="true" data-bs-content="Add code to favorite list" type="button" class="btn btn-sm btn-link" onclick="caseEntryApp.handlers.AddCodeToFavListButtonClick(this)"><i class="icon-star" aria-hidden="true"></i></button>
+                        </td>
+
+                        {{else}}
+                        <td>${AreaName}</td>
+                        <td id="typeName">${TypeName}</td>
+                        {{/if}}
+                        {{if MaxQtyAllowed > 1 && !IsManagedFavorites}}
+                        <td class="maxqty nowrap" id="code-qty">
+                            ${CodeQty}
+                            <div class="input-group input-group-sm float-end">
+                                <input id="txtcodeQuantity" type="text" class="form-control form-control-sm" value="" min="1" max="${MaxQtyAllowed}" maxlength="${MaxQtyAllowedNumChars}" oninput="codeCommon.handlers.onCodeQtyEntered(this)" data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="left" data-bs-container="body" data-bs-content="Max of ${MaxQtyAllowed} allowed." />
+                                <button id="btnCodeAdd" type="button" class="btn btn-sm btn-light input-group-text btnCodeAdd" disabled="disabled" onclick="sidePanelCodes.handlers.addCodeHandler(this, false)">Add</button>
+                            </div>
+                        </td>
+                        {{else}}
+                        <td class="nowrap text-center" id="code-qty">
+                            ${CodeQty}
+                            <button type="button" class="btn btn-sm btn-light" onclick="sidePanelCodes.handlers.addCodeHandler(this, false)">Add</button>
+                        </td>
+                        {{/if}}
+                    </tr>
+                    {{else}}
+                <tr data-code-id="${CodeId}" data-area-id="${AreaId}" data-type-id="${TypeId}" data-type-to-code-id="${TypeToCodeId}" data-def-cat-short-names="${DefCatShortNames}" data-max-qty-allowed="${MaxQtyAllowed}">
+                    <td id="code-value">${CodeValue}</td>
+                    <td id="code-description">
+                        <span id="code-description-text">${CodeDescription}</span>
+                        <span id="def-cats"></span>
+                        {{if HasCodeAttributes  && !IsManagedFavorites}}
+                        <br />
+                        {{each CodeAttributes}}
+                        <label class="codeAttributeBtn checkbox inline padding-top-4px"><input type="checkbox" class="cbCodeAttribute codeAttributeBtn" value="${Id}" />${Name}</label>
+                        {{/each}}
+                        {{/if}}
+                    </td>
+                    {{if IsFavoritesEnabled }}
+                    <td>${AreaName}</td>
+                    <td id="typeName">${TypeName}</td>
+                    <td class="text-center">
+                        <button  data-bs-toggle="popover" data-bs-container="body" data-bs-trigger="hover" data-bs-placement="top" data-bs-html="true" data-bs-content="Add code ${CodeValue} to favorite list" type="button" class="btn btn-sm btn-link" onclick="caseEntryApp.handlers.AddCodeToFavListButtonClick(this)"><i class="icon-star" aria-hidden="true"></i></button>
+                    </td>
+                    {{else}}
+                    <td>${AreaName}</td>
+                    <td id="typeName">${TypeName}</td>
+                    {{/if}}
+                    {{if MaxQtyAllowed > 1 && !IsManagedFavorites}}
+                    <td class="maxqty nowrap" id="code-qty">
+                        ${CodeQty}
+                        <div class="input-group input-group-sm float-end">
+                            <input id="txtcodeQuantity" type="text" class="form-control form-control-sm" value="" min="1" max="${MaxQtyAllowed}" maxlength="${MaxQtyAllowedNumChars}" oninput="codeCommon.handlers.onCodeQtyEntered(this)" data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="left" data-bs-container="body" data-bs-content="Max of ${MaxQtyAllowed} allowed." />
+                            <button id="btnCodeAdd" type="button" class="btn btn-sm btn-light input-group-text btnCodeAdd" disabled="disabled" onclick="sidePanelCodes.handlers.addCodeHandler(this, false)">Add</button>
+                        </div>
+                    </td>
+                    {{else}}
+                    <td class="nowrap text-center" id="code-qty">
+                        ${CodeQty}
+                        <button type="button" class="btn btn-sm btn-light" onclick="sidePanelCodes.handlers.addCodeHandler(this, false)">Add</button>
+                    </td>
+                    {{/if}}
+                </tr>
+                    {{/if}}
+              </script>
+
+              <script src="https://apps.acgme.org/ads/bundles/core-caselogs?v=nmLmBQrxEULonJLKgeiIz_VjMcHaqWJTiBUbUh69zSo1"></script>
+
+              <div class="page-header d-none d-lg-block">
+                <h1>
+                  0404121134 - University of Pennsylvania Health System
+                  Program<br />
+                  <small> Anesthesiology - Philadelphia, PA </small>
+                </h1>
+              </div>
+              <div class="page-header d-lg-none clearfix">
+                <div
+                  class="text-end float-end ms-3"
+                  id="casesSubmittedDiv"
+                  style="display: none"
+                >
+                  <strong id="casesEntered"></strong><br /><span
+                    >Cases Submitted</span
+                  >
+                </div>
+                <div class="text-start">
+                  <a
+                    class="btn btn-sm btn-link no-padding"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#modelCodeName"
+                  >
+                    Philadelphia, PA
+                    <i
+                      class="icon-angle-down icon-fixed-width"
+                      aria-hidden="true"
+                    ></i>
+                  </a>
+                  <div id="modelCodeName" class="collapse text-start">
+                    0404121134 - University of Pennsylvania Health System
+                    Program
+                  </div>
+                </div>
+              </div>
+
+              <form action="/ads/caselogs/caseentry/insert" method="post">
+                <input
+                  name="__RequestVerificationToken"
+                  type="hidden"
+                  value="_bqyJsb-FHz-P9GB-W-Wvc6W5g5D2aZyXvWZMkAV_muPH1-3ZziQ8p4FsGG1hkIBHyj7jKFN3tFgIMygdNCBm9DDoEIK-bydPtxgkivPlsl6qCYFJvNwwREmd3A-yYvYBfhcuw2"
+                />
+                <div class="fixed-scroll-wrapper" style="height: 51.1953px">
+                  <div class="header fixed-scroll" style="width: 988px">
+                    <div class="float-end">
+                      <div class="float-start">
+                        <div id="caseEntryCount">
+                          <div>
+                            <strong>0</strong>
+                          </div>
+                          <span>Cases Submitted</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-light"
+                        id="btnSummaryView"
+                        onclick="caseEntry040.handlers.ShowSummaryView()"
+                      >
+                        <i class="icon-list" aria-hidden="true">&nbsp;</i>View
+                        Summary
+                      </button>
+                      <button
+                        type="submit"
+                        class="btn btn-sm btn-success"
+                        id="submitButton"
+                      >
+                        Submit
+                      </button>
+                    </div>
+                    <h2>Add Cases</h2>
+                  </div>
+                </div>
+                <div id="clienterrors"></div>
+                <div class="alert alert-search" style="display: none"></div>
+                <div id="HiddenAttributeDefaultValues">
+                  <input
+                    id="DefaultInstitutions"
+                    name="DefaultInstitutions"
+                    type="hidden"
+                    value=""
+                  />
+                  <input
+                    id="DefaultAttendings"
+                    name="DefaultAttendings"
+                    type="hidden"
+                    value=""
+                  />
+                  <input
+                    id="DefaultResidentRoles"
+                    name="DefaultResidentRoles"
+                    type="hidden"
+                    value=""
+                  />
+                  <input
+                    id="DefaultRotations"
+                    name="DefaultRotations"
+                    type="hidden"
+                    value=""
+                  />
+                  <input
+                    id="DefaultGenders"
+                    name="DefaultGenders"
+                    type="hidden"
+                    value=""
+                  />
+                  <input
+                    id="DefaultPatientTypes"
+                    name="DefaultPatientTypes"
+                    type="hidden"
+                    value="33"
+                  />
+                  <input
+                    id="DefaultProcedureYear"
+                    name="DefaultProcedureYear"
+                    type="hidden"
+                    value="2"
+                  />
+                </div>
+                <div>
+                  <div class="panel panel-default panel-case-log-templates">
+                    <div class="hidden">
+                      <label class="form-label">Resident*</label
+                      ><select
+                        data-bs-toggle="tooltip"
+                        data-bs-original-title="* Required"
+                        data-bs-placement="right"
+                        data-val="true"
+                        data-val-required="This field is required."
+                        id="Residents"
+                        name="Residents"
+                        class="form-select form-select-sm"
+                        readonly="True"
+                      >
+                        <option
+                          selected="selected"
+                          data-year="2"
+                          value="1325527"
+                        >
+                          Azamfirei, Razvan
+                        </option>
+                      </select>
+                      <span
+                        class="field-validation-valid"
+                        data-valmsg-for="Residents"
+                        data-valmsg-replace="true"
+                      ></span>
+                    </div>
+                    <div class="panel-heading">
+                      <div class="panel-edit-buttons-on hide float-end">
+                        <a
+                          href="javascript:;"
+                          class="btn btn-sm btn-light btn-cancel"
+                          >Cancel</a
+                        >
+                        <a
+                          id="SaveTemplateConfirmed"
+                          href="javascript:;"
+                          class="btn btn-sm btn-success"
+                          >Save</a
+                        >
+                      </div>
+
+                      <div>
+                        <div class="col-8">
+                          <label
+                            class="form-label"
+                            for="ResidentProcedureCaseTemplateId"
+                          >
+                            Template Name
+                            <a
+                              data-bs-toggle="popover"
+                              data-bs-trigger="hover"
+                              data-bs-placement="right"
+                              data-bs-content="Templates allows you to save a set of case selections (excluding Case ID, Case Date, Comments)."
+                              id="templInfo"
+                              data-bs-original-title=""
+                              title=""
+                              ><i
+                                class="icon-info-sign text-primary"
+                                aria-hidden="true"
+                              ></i
+                            ></a>
+                          </label>
+                          <div
+                            class="input-group input-group-sm input-template no-margin"
+                          >
+                            <select
+                              class="no-margin form-select form-select-sm"
+                              data-delete-residentprocedurecasetemplate-url="/ads/CaseLogs/ResidentProcedureCaseTemplate/DeleteResidentProcedureCaseTemplate"
+                              data-get-residentprocedurecasetemplate-url="/ads/CaseLogs/ResidentProcedureCaseTemplate/GetResidentProcedureCaseTemplate"
+                              data-get-residentprocedurecasetemplateoptions-url="/ads/CaseLogs/ResidentProcedureCaseTemplate/GetResidentProcedureCaseTemplateOptions"
+                              data-save-residentprocedurecasetemplate-url="/ads/CaseLogs/ResidentProcedureCaseTemplate/SaveResidentProcedureCaseTemplate"
+                              data-val="true"
+                              data-val-number="The field Resident Procedure Case Template Id must be a number."
+                              id="ResidentProcedureCaseTemplateId"
+                              name="ResidentProcedureCaseTemplateId"
+                            >
+                              <option value="">Select Template</option>
+                              <option selected="selected" value="207511">
+                                HUP - Adult
+                              </option>
+                              <option value="218021">HUP - Elder</option>
+                              <option value="211928">PPMC - Adult</option>
+                              <option value="218022">PPMC - Elder</option>
+                            </select>
+                            <div
+                              class="panel-edit-buttons-off float-end"
+                              id="template-controls"
+                            >
+                              <button
+                                type="button"
+                                class="btn btn-sm btn-light btn-template"
+                                id="AddTemplate"
+                                title="Add Template"
+                              >
+                                <i class="icon-plus" aria-hidden="true"></i>
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn-sm btn-light btn-template"
+                                id="SaveTemplate"
+                                title="Update Template"
+                              >
+                                Update
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn-sm btn-light btn-template"
+                                id="DeleteTemplate"
+                                title="Delete Template"
+                              >
+                                <i class="icon-trash" aria-hidden="true"></i>
+                              </button>
+                            </div>
+                            <span class="form-text template-count no-margin"
+                              >Using 4 of 10 Templates</span
+                            >
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        id="delete-template-confirmation-tmpl"
+                        class="modal hide fade"
+                      >
+                        <div class="modal-dialog">
+                          <div class="modal-content">
+                            <div class="modal-header">
+                              <h5 class="modal-title">Delete Template</h5>
+                              <button
+                                type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-hidden="true"
+                                aria-label="Close"
+                              ></button>
+                            </div>
+                            <div class="modal-body">
+                              <p>Do you want to delete this template?</p>
+                              <strong id="TemplateNameToBeDeleted"></strong>
+                            </div>
+                            <div class="modal-footer">
+                              <a
+                                id="cancelDeleteTemplate"
+                                href="#"
+                                class="btn btn-sm btn-light"
+                                data-bs-dismiss="modal"
+                                >Cancel</a
+                              >
+                              <a
+                                id="DeleteTemplateConfirmed"
+                                href="#"
+                                class="btn btn-sm btn-primary"
+                                >Confirm</a
+                              >
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div id="HiddenAttributeDefaultValues">
+                        <input
+                          id="DefaultInstitutions"
+                          name="DefaultInstitutions"
+                          type="hidden"
+                          value=""
+                        />
+                        <input
+                          id="DefaultAttendings"
+                          name="DefaultAttendings"
+                          type="hidden"
+                          value=""
+                        />
+                        <input
+                          id="DefaultResidentRoles"
+                          name="DefaultResidentRoles"
+                          type="hidden"
+                          value=""
+                        />
+                        <input
+                          id="DefaultRotations"
+                          name="DefaultRotations"
+                          type="hidden"
+                          value=""
+                        />
+                        <input
+                          id="DefaultGenders"
+                          name="DefaultGenders"
+                          type="hidden"
+                          value=""
+                        />
+                        <input
+                          id="DefaultPatientTypes"
+                          name="DefaultPatientTypes"
+                          type="hidden"
+                          value="33"
+                        />
+                        <input
+                          id="DefaultProcedureYear"
+                          name="DefaultProcedureYear"
+                          type="hidden"
+                          value="2"
+                        />
+                        <input
+                          data-val="true"
+                          data-val-required="The Max Procedure Case Template field is required."
+                          id="MaxProcedureCaseTemplate"
+                          name="MaxProcedureCaseTemplate"
+                          type="hidden"
+                          value="10"
+                        />
+                        <input
+                          id="CountProcedureCaseTemplate"
+                          name="CountProcedureCaseTemplate"
+                          type="hidden"
+                          value="4"
+                        />
+                      </div>
+                    </div>
+                    <div class="panel-body panel-edit">
+                      <div class="row">
+                        <div class="col-9">
+                          <div class="row hide template-name">
+                            <label class="form-label">Template Name</label>
+                            <div
+                              class="col-12 input-group input-group-sm input-template"
+                            >
+                              <input
+                                class="form-control form-control-sm maxlength"
+                                id="TemplateNewName"
+                                maxlength="50"
+                                name="TemplateNewName"
+                                placeholder="Enter new template name"
+                                type="text"
+                                value=""
+                              />
+                              <input
+                                id="TemplateSaveType"
+                                name="TemplateSaveType"
+                                type="hidden"
+                                value=""
+                                class="form-control form-control-sm"
+                              />
+                              <span
+                                class="input-group-text"
+                                id="DefaultTemplateCB"
+                              >
+                                <label class="checkbox"
+                                  ><input type="checkbox" />Default</label
+                                >
+                              </span>
+                            </div>
+                          </div>
+                          <div class="row">
+                            <div class="col-4 mb-2">
+                              <label class="form-label"
+                                >Case ID
+                                <a
+                                  data-bs-toggle="popover"
+                                  data-bs-trigger="hover"
+                                  data-bs-placement="right"
+                                  data-bs-html="true"
+                                  data-bs-content="A unique identifier for each case that does not contain patient identifiable information, such as patient name or SSN."
+                                  data-bs-original-title=""
+                                  title=""
+                                  ><i
+                                    class="icon-info-sign text-primary"
+                                    aria-hidden="true"
+                                  ></i></a
+                              ></label>
+                              <input
+                                name="71291aeec5a9d7383731151a615f5f0d3418ffdea0630e0b8dfab7161a5854b8"
+                                class="form-control form-control-sm maxlength"
+                                id="71291aeec5a9d7383731151a615f5f0d3418ffdea0630e0b8dfab7161a5854b8"
+                                type="text"
+                                value=""
+                                maxlength="25"
+                              />
+                            </div>
+
+                            <div class="col-4 mb-2">
+                              <label class="form-label">Case Date*</label>
+
+                              <div class="input-group date ProcedureDate">
+                                <input
+                                  class="form-control form-control-sm valid"
+                                  data-bs-toggle="tooltip"
+                                  data-bs-original-title="* Required"
+                                  data-bs-placement="right"
+                                  data-val="true"
+                                  data-val-required="The Case Date field is required."
+                                  id="5b1ce523d862b284baf78d6c3d9a600a957dbf929d880ddc9256ac5e8dd02b54"
+                                  name="5b1ce523d862b284baf78d6c3d9a600a957dbf929d880ddc9256ac5e8dd02b54"
+                                  type="text"
+                                  value="2/1/2026"
+                                />
+                                <span class="input-group-text"
+                                  ><i
+                                    class="icon-calendar"
+                                    aria-hidden="true"
+                                  ></i
+                                ></span>
+                              </div>
+                              <span
+                                class="field-validation-valid"
+                                data-valmsg-for="5b1ce523d862b284baf78d6c3d9a600a957dbf929d880ddc9256ac5e8dd02b54"
+                                data-valmsg-replace="true"
+                              ></span>
+                            </div>
+                          </div>
+                          <div class="template-details">
+                            <div class="row">
+                              <div class="col-4 mb-2">
+                                <label class="form-label"
+                                  >Case Year*
+                                  <a
+                                    data-bs-toggle="popover"
+                                    data-bs-trigger="hover"
+                                    data-bs-placement="right"
+                                    data-bs-html="true"
+                                    data-bs-content="If Case Year does not default to your current year in program, contact your program to update your training year and status in ADS."
+                                    data-bs-original-title=""
+                                    title=""
+                                    ><i
+                                      class="icon-info-sign text-primary"
+                                      aria-hidden="true"
+                                    ></i></a></label
+                                ><select
+                                  data-bs-toggle="tooltip"
+                                  data-bs-original-title="* Required"
+                                  data-bs-placement="right"
+                                  data-val="true"
+                                  data-val-required="This field is required."
+                                  id="ProcedureYear"
+                                  name="ProcedureYear"
+                                  class="form-select form-select-sm"
+                                >
+                                  <option value="1">1</option>
+                                  <option selected="selected" value="2">
+                                    2
+                                  </option>
+                                </select>
+                                <span
+                                  class="field-validation-valid"
+                                  data-valmsg-for="ProcedureYear"
+                                  data-valmsg-replace="true"
+                                ></span>
+                              </div>
+                            </div>
+                            <div class="row">
+                              <div class="col-4 mb-2">
+                                <label class="form-label">Site*</label
+                                ><select
+                                  data-bs-toggle="tooltip"
+                                  data-bs-original-title="* Required"
+                                  data-bs-placement="right"
+                                  data-val="true"
+                                  data-val-required="This field is required."
+                                  id="Institutions"
+                                  name="Institutions"
+                                  class="form-select form-select-sm"
+                                >
+                                  <option value="">-- Select --</option>
+                                  <option value="12763">
+                                    Children's Hospital of Philadelphia
+                                  </option>
+                                  <option value="12771">
+                                    Pennsylvania Hospital (UPHS)
+                                  </option>
+                                  <option value="12871">
+                                    Presbyterian Medical Center (UPHS)
+                                  </option>
+                                  <option value="12748">
+                                    University of Pennsylvania Health System
+                                  </option>
+                                  <option value="19367">Other Site</option>
+                                </select>
+                                <span
+                                  class="field-validation-valid"
+                                  data-valmsg-for="Institutions"
+                                  data-valmsg-replace="true"
+                                ></span>
+                              </div>
+                              <div class="col-4 mb-2">
+                                <label class="form-label"
+                                  >Supervisor*
+                                  <a
+                                    data-bs-toggle="popover"
+                                    data-bs-trigger="hover"
+                                    data-bs-placement="right"
+                                    data-bs-html="true"
+                                    data-bs-content="If an Attending/Supervisor is missing, contact your program to add them in ADS."
+                                    data-bs-original-title=""
+                                    title=""
+                                    ><i
+                                      class="icon-info-sign text-primary"
+                                      aria-hidden="true"
+                                    ></i></a></label
+                                ><select
+                                  data-bs-toggle="tooltip"
+                                  data-bs-original-title="* Required"
+                                  data-bs-placement="right"
+                                  data-val="true"
+                                  data-val-required="This field is required."
+                                  id="Attendings"
+                                  name="Attendings"
+                                  class="form-select form-select-sm select2-hidden-accessible"
+                                  data-select2-id="Attendings"
+                                  tabindex="-1"
+                                  aria-hidden="true"
+                                >
+                                  <option value="" data-select2-id="2">
+                                    -- Select --
+                                  </option>
+                                  <option value="480486">
+                                    Abraham, Daniel
+                                  </option>
+                                  <option value="476410">
+                                    Al Ghofaily, Lourdes
+                                  </option>
+                                  <option value="97312">
+                                    Ashburn, Michael
+                                  </option>
+                                  <option value="187431">Atkins, Joshua</option>
+                                  <option value="18059">
+                                    Augoustides, Yianni
+                                  </option>
+                                  <option value="551592">Babirak, Loren</option>
+                                  <option value="267554">
+                                    Baptiste, Justina
+                                  </option>
+                                  <option value="287406">Bell, Russell</option>
+                                  <option value="698789">
+                                    Bezinover, Dmitri
+                                  </option>
+                                  <option value="551605">
+                                    Black, Stephanie
+                                  </option>
+                                  <option value="734941">
+                                    Boominathan, Praba
+                                  </option>
+                                  <option value="35026">
+                                    Braslow, Benjamin
+                                  </option>
+                                  <option value="357727">Cai, Lu Fan</option>
+                                  <option value="484744">
+                                    Carspecken, Charles
+                                  </option>
+                                  <option value="699770">Cichon, Joseph</option>
+                                  <option value="692626">Colao, Joseph</option>
+                                  <option value="207199">Corcino, Ana</option>
+                                  <option value="692933">Dahl, Ellen</option>
+                                  <option value="105180">Denham, E</option>
+                                  <option value="670395">Duffy, Caoimhe</option>
+                                  <option value="19950">
+                                    Edwards, Christopher
+                                  </option>
+                                  <option value="295186">
+                                    Elizabeth, Valentine
+                                  </option>
+                                  <option value="550970">
+                                    Elliott, Matthew
+                                  </option>
+                                  <option value="255593">
+                                    FACULTY, FACULTY
+                                  </option>
+                                  <option value="31126">Falk, Mark</option>
+                                  <option value="27643">Falk, Scott</option>
+                                  <option value="354614">Feinman, Jared</option>
+                                  <option value="77618">Fiadjoe, John</option>
+                                  <option value="211321">Fleisher, Lee</option>
+                                  <option value="238108">Fleisher, Lee</option>
+                                  <option value="138299">Gaiser, Robert</option>
+                                  <option value="108511">
+                                    Ganesh, Arjunan
+                                  </option>
+                                  <option value="272774">
+                                    Gaurav, Malhotra
+                                  </option>
+                                  <option value="129899">
+                                    Gavin, Laurence
+                                  </option>
+                                  <option value="207602">
+                                    Gendzel, Leonardo
+                                  </option>
+                                  <option value="376294">Godfrey, Wayne</option>
+                                  <option value="518925">Gohil, Sharmil</option>
+                                  <option value="576213">Gold, Andrew</option>
+                                  <option value="304819">Gordon, Emily</option>
+                                  <option value="521674">Graff, Veena</option>
+                                  <option value="193361">
+                                    Greenblatt, Eric
+                                  </option>
+                                  <option value="480014">Grosh, Taras</option>
+                                  <option value="551392">
+                                    Gugger, Douglas
+                                  </option>
+                                  <option value="19558">
+                                    Gurnaney, Harshad
+                                  </option>
+                                  <option value="260647">Gutsche, Jacob</option>
+                                  <option value="296937">
+                                    Hanson, William
+                                  </option>
+                                  <option value="552138">Harbison, Sean</option>
+                                  <option value="30484">Harris, Bernard</option>
+                                  <option value="551607">
+                                    Henderson, Alicia
+                                  </option>
+                                  <option value="184883">Horak, Jiri</option>
+                                  <option value="108163">Jantzen, Ellen</option>
+                                  <option value="551889">
+                                    Johnson, Gregory
+                                  </option>
+                                  <option value="485286">Joseph, Thomas</option>
+                                  <option value="23563">Kelz, Max</option>
+                                  <option value="78385">Keogh, John</option>
+                                  <option value="485284">Kiefer, Jesse</option>
+                                  <option value="550976">Kim, James</option>
+                                  <option value="35467">Kim, Patrick</option>
+                                  <option value="551391">Kitt, Arthur</option>
+                                  <option value="241817">Kofke, Andrew</option>
+                                  <option value="497783">Kornfield, Zev</option>
+                                  <option value="551893">
+                                    Kornfield, Zev Noah
+                                  </option>
+                                  <option value="19020">Kramer, Francis</option>
+                                  <option value="31125">Kramer, Jeffrey</option>
+                                  <option value="9089">Kukafka, Jeremy</option>
+                                  <option value="698693">Kumar, Sarah</option>
+                                  <option value="693015">Lee, Allison</option>
+                                  <option value="47960">Levy, Warren</option>
+                                  <option value="625308">
+                                    Linganna, Regina
+                                  </option>
+                                  <option value="262464">Liu, JB</option>
+                                  <option value="183302">Liu, Renyu</option>
+                                  <option value="339549">
+                                    Lockman, Justin
+                                  </option>
+                                  <option value="493076">MacKay, Emily</option>
+                                  <option value="573544">
+                                    Malayaman, S. Nini
+                                  </option>
+                                  <option value="256922">
+                                    Malhotra, Gaurav
+                                  </option>
+                                  <option value="551906">
+                                    Malhotra, Gaurav
+                                  </option>
+                                  <option value="475927">
+                                    Mandelbaum, Tal
+                                  </option>
+                                  <option value="248292">
+                                    Mason, Christopher
+                                  </option>
+                                  <option value="699198">
+                                    Mattera, Matthew
+                                  </option>
+                                  <option value="241657">
+                                    McKinstry-Wu, Andrew
+                                  </option>
+                                  <option value="331980">
+                                    McKinstry-Wu, Andrew
+                                  </option>
+                                  <option value="551494">
+                                    Miano, Madeline
+                                  </option>
+                                  <option value="293917">
+                                    Mickler, Thomas
+                                  </option>
+                                  <option value="17962">Milas, Bonnie</option>
+                                  <option value="256138">Miller, Frank</option>
+                                  <option value="670393">Miranda, James</option>
+                                  <option value="476406">Moore, Roger</option>
+                                  <option value="734920">Mulla, Abbas</option>
+                                  <option value="485283">
+                                    Murthy, Sushila
+                                  </option>
+                                  <option value="551687">Nelson, Olivia</option>
+                                  <option value="12217">Neuman, Mark</option>
+                                  <option value="645528">Nguyen, John</option>
+                                  <option value="645422">
+                                    Nilforoshan, Maryam
+                                  </option>
+                                  <option value="47565">Ochroch, Edward</option>
+                                  <option value="550978">Ochroch, Jason</option>
+                                  <option value="299412">Onuoha, Onyi</option>
+                                  <option value="521270">Patel, Saumil</option>
+                                  <option value="550981">Petrini, Laura</option>
+                                  <option value="485282">
+                                    Piedmont, Alexandria
+                                  </option>
+                                  <option value="376299">Pizzini, Mark</option>
+                                  <option value="734899">Polsky, Sylvie</option>
+                                  <option value="280847">Prakash, Patel</option>
+                                  <option value="377912">
+                                    Proekt, Alexander
+                                  </option>
+                                  <option value="306007">Raiten, Jesse</option>
+                                  <option value="279381">
+                                    Randolph, Norman
+                                  </option>
+                                  <option value="384813">Rock, Kristen</option>
+                                  <option value="507118">
+                                    Rubin, Benjamin
+                                  </option>
+                                  <option value="691817">Sacks, Stuart</option>
+                                  <option value="479738">
+                                    Sahota, Gurmukh
+                                  </option>
+                                  <option value="698975">Saka, Erik</option>
+                                  <option value="277610">Sakamaki, Misa</option>
+                                  <option value="125744">Savino, Joseph</option>
+                                  <option value="15481">
+                                    Schlichter, Rolf
+                                  </option>
+                                  <option value="288129">
+                                    Schlichter, Sander
+                                  </option>
+                                  <option value="734913">Scott, Thomas</option>
+                                  <option value="432933">Shah, Ronak</option>
+                                  <option value="227541">Siegel, Don</option>
+                                  <option value="36721">Sims, Carrie</option>
+                                  <option value="495844">Singh, Rikhi</option>
+                                  <option value="258841">Smelz, Harry</option>
+                                  <option value="396152">smith, bob</option>
+                                  <option value="717410">Spelde, Audrey</option>
+                                  <option value="734927">
+                                    Stout, Christopher
+                                  </option>
+                                  <option value="551615">
+                                    Sutherland, Tori
+                                  </option>
+                                  <option value="266036">
+                                    Tanner, Jonathan
+                                  </option>
+                                  <option value="256873">Thal, Gary</option>
+                                  <option value="670398">Thalji, Nabil</option>
+                                  <option value="692986">Vail, Emily</option>
+                                  <option value="254414">
+                                    Valentine, Elizabeth
+                                  </option>
+                                  <option value="297015">
+                                    Vernick, William
+                                  </option>
+                                  <option value="278391">Vinca, Nancy</option>
+                                  <option value="485293">Wang, Anthony</option>
+                                  <option value="551618">
+                                    Ward, Christopher
+                                  </option>
+                                  <option value="258946">Wei, Haufeng</option>
+                                  <option value="20915">Wei, Huafeng</option>
+                                  <option value="337970">
+                                    Weinstein, Mitchell
+                                  </option>
+                                  <option value="274117">Weiss, Mark</option>
+                                  <option value="88050">Weiss, Stuart</option>
+                                  <option value="485295">Werlhof, Hazel</option>
+                                  <option value="693032">
+                                    White, Elizabeth
+                                  </option>
+                                  <option value="262400">Williams, Jay</option>
+                                  <option value="15631">Wong, Andrew</option>
+                                  <option value="289704">Wu, Shyh-Shiun</option>
+                                  <option value="282135">Yi, Peter</option>
+                                  <option value="486250">
+                                    Zhou, Elizabeth
+                                  </option></select
+                                ><span
+                                  class="select2 select2-container select2-container--default"
+                                  dir="ltr"
+                                  data-select2-id="1"
+                                  data-bs-toggle="tooltip"
+                                  data-bs-placement="right"
+                                  data-val-required="This field is required."
+                                  data-bs-original-title="* Required"
+                                  style="width: 100%"
+                                  ><span class="selection"
+                                    ><span
+                                      class="select2-selection select2-selection--single"
+                                      role="combobox"
+                                      aria-haspopup="true"
+                                      aria-expanded="false"
+                                      tabindex="0"
+                                      aria-disabled="false"
+                                      aria-labelledby="select2-Attendings-container"
+                                      ><span
+                                        class="select2-selection__rendered"
+                                        id="select2-Attendings-container"
+                                        role="textbox"
+                                        aria-readonly="true"
+                                        title="-- Select --"
+                                        >-- Select --</span
+                                      ><span
+                                        class="select2-selection__arrow"
+                                        role="presentation"
+                                        ><b
+                                          role="presentation"
+                                        ></b></span></span></span
+                                  ><span
+                                    class="dropdown-wrapper"
+                                    aria-hidden="true"
+                                  ></span
+                                ></span>
+                                <span
+                                  class="field-validation-valid"
+                                  data-valmsg-for="Attendings"
+                                  data-valmsg-replace="true"
+                                ></span>
+                              </div>
+                            </div>
+                            <div class="row">
+                              <div class="col-4 mb-2">
+                                <label class="form-label">Patient Age*</label
+                                ><select
+                                  data-bs-toggle="tooltip"
+                                  data-bs-original-title="* Required"
+                                  data-bs-placement="right"
+                                  data-val="true"
+                                  data-val-required="This field is required."
+                                  id="PatientTypes"
+                                  name="PatientTypes"
+                                  class="form-select form-select-sm"
+                                >
+                                  <option value="">-- Select --</option>
+                                  <option value="30">a. &lt; 3 months</option>
+                                  <option value="31">
+                                    b. &gt;= 3 mos. and &lt; 3 yr.
+                                  </option>
+                                  <option value="32">
+                                    c. &gt;= 3 yr. and &lt; 12 yr.
+                                  </option>
+                                  <option selected="selected" value="33">
+                                    d. &gt;= 12 yr. and &lt; 65 yr.
+                                  </option>
+                                  <option value="34">e. &gt;= 65 year</option>
+                                </select>
+                                <span
+                                  class="field-validation-valid"
+                                  data-valmsg-for="PatientTypes"
+                                  data-valmsg-replace="true"
+                                ></span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="col-3 caseTypes" id="RRCCaseTypes">
+                          <div class="list-group">
+                            <div
+                              class="list-group-item list-group-item-collapse"
+                              data-bs-toggle=""
+                              data-bs-original-title="* Required"
+                              data-bs-placement="left"
+                            >
+                              <label
+                                class="form-label clearRadioLabel"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#Life-ThreateningPathology"
+                              >
+                                <i
+                                  class="icon-angle-down float-end"
+                                  aria-hidden="true"
+                                ></i
+                                >Life-Threatening Pathology</label
+                              ><span class="clearRadioSelection"
+                                ><span
+                                  class="icon-trash text-danger"
+                                  data-bs-toggle="popover"
+                                  data-bs-trigger="hover"
+                                  data-bs-placement="top"
+                                  data-bs-content="Clear Selections"
+                                  aria-hidden="true"
+                                  data-bs-original-title=""
+                                  title=""
+                                ></span
+                              ></span>
+                              <div
+                                id="Life-ThreateningPathology"
+                                class="collapse show"
+                              >
+                                <label class="checkbox"
+                                  ><input
+                                    id="CaseTypes_46"
+                                    name="CaseTypes[0]"
+                                    type="radio"
+                                    value="46"
+                                  />Non-Trauma Life-Threatening Pathology</label
+                                ><label class="checkbox"
+                                  ><input
+                                    id="CaseTypes_134"
+                                    name="CaseTypes[0]"
+                                    type="radio"
+                                    value="134"
+                                  />Trauma Life-Threatening Pathology</label
+                                >
+                              </div>
+                            </div>
+                            <div
+                              class="list-group-item list-group-item-collapse"
+                              data-bs-toggle=""
+                              data-bs-original-title="* Required"
+                              data-bs-placement="left"
+                            >
+                              <label
+                                class="form-label clearRadioLabel"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#DifficultAirwayManagement"
+                              >
+                                <i
+                                  class="icon-angle-down float-end"
+                                  aria-hidden="true"
+                                ></i
+                                >Difficult Airway Management</label
+                              ><span class="clearRadioSelection"
+                                ><span
+                                  class="icon-trash text-danger"
+                                  data-bs-toggle="popover"
+                                  data-bs-trigger="hover"
+                                  data-bs-placement="top"
+                                  data-bs-content="Clear Selections"
+                                  aria-hidden="true"
+                                  data-bs-original-title=""
+                                  title=""
+                                ></span
+                              ></span>
+                              <div
+                                id="DifficultAirwayManagement"
+                                class="collapse show"
+                              >
+                                <label class="checkbox"
+                                  ><input
+                                    id="CaseTypes_148"
+                                    name="CaseTypes[1]"
+                                    type="radio"
+                                    value="148"
+                                  />Anticipated</label
+                                ><label class="checkbox"
+                                  ><input
+                                    id="CaseTypes_149"
+                                    name="CaseTypes[1]"
+                                    type="radio"
+                                    value="149"
+                                  />Unanticipated</label
+                                >
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="panel-body">
+                      <div class="row">
+                        <div class="col-12 mb-2">
+                          <a
+                            href="javascript:;"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#commentsContainer"
+                            ><i
+                              class="icon-plus icon-fixed-width"
+                              aria-hidden="true"
+                            ></i
+                            >Add Comments
+                            <a
+                              data-bs-toggle="popover"
+                              data-bs-trigger="hover"
+                              data-bs-placement="right"
+                              data-bs-html="true"
+                              data-bs-content="Do not enter patient identifiable information, such as patient name or SSN."
+                              data-bs-original-title=""
+                              title=""
+                            >
+                              <i
+                                class="icon-info-sign text-primary"
+                                aria-hidden="true"
+                              ></i> </a
+                          ></a>
+                          <div id="commentsContainer" class="collapse">
+                            <textarea
+                              class="form-control form-control-sm maxlength"
+                              cols="20"
+                              id="Comments"
+                              maxlength="1000"
+                              name="Comments"
+                              rows="2"
+                            ></textarea>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <input
+                  id="IsCaseType_0_Required"
+                  name="IsCaseType_0_Required"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="IsCaseType_1_Required"
+                  name="IsCaseType_1_Required"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="CaseTypeLength"
+                  name="CaseTypeLength"
+                  type="hidden"
+                  value="2"
+                /><input
+                  data-val="true"
+                  data-val-required="The Procedure Case Count field is required."
+                  id="ProcedureCaseCount"
+                  name="ProcedureCaseCount"
+                  type="hidden"
+                  value="0"
+                /><input
+                  data-val="true"
+                  data-val-required="The Hold Selected Codes field is required."
+                  id="HoldSelectedCodes"
+                  name="HoldSelectedCodes"
+                  type="hidden"
+                  value="False"
+                /><input
+                  data-val="true"
+                  data-val-required="The Is Procedure Case Template Enabled field is required."
+                  id="IsProcedureCaseTemplateEnabled"
+                  name="IsProcedureCaseTemplateEnabled"
+                  type="hidden"
+                  value="True"
+                /><input
+                  data-val="true"
+                  data-val-required="The Specialty Id field is required."
+                  id="SpecialtyId"
+                  name="SpecialtyId"
+                  type="hidden"
+                  value="3"
+                /><input
+                  data-val="true"
+                  data-val-number="The field Specialty Type Id must be a number."
+                  id="SpecialtyTypeId"
+                  name="SpecialtyTypeId"
+                  type="hidden"
+                  value="5"
+                /><input
+                  data-val="true"
+                  data-val-required="The Search Term field is required."
+                  id="SearchTerm"
+                  name="SearchTerm"
+                  type="hidden"
+                  value="False"
+                /><input
+                  data-val="true"
+                  data-val-required="The Program Id field is required."
+                  id="ProgramId"
+                  name="ProgramId"
+                  type="hidden"
+                  value="0"
+                /><input
+                  id="SpecialtyCode"
+                  name="SpecialtyCode"
+                  type="hidden"
+                  value="040"
+                /><input
+                  data-val="true"
+                  data-val-required="The C PTBased Case field is required."
+                  id="CPTBasedCase"
+                  name="CPTBasedCase"
+                  type="hidden"
+                  value="True"
+                /><input
+                  data-val="true"
+                  data-val-required="The Type Based Case field is required."
+                  id="TypeBasedCase"
+                  name="TypeBasedCase"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="SelectedCodes"
+                  name="SelectedCodes"
+                  type="hidden"
+                  value=""
+                /><input
+                  id="SelectedCodeAttributes"
+                  name="SelectedCodeAttributes"
+                  type="hidden"
+                  value=""
+                /><input
+                  data-val="true"
+                  data-val-required="The Specialty Uses Primary Credit field is required."
+                  id="SpecialtyUsesPrimaryCredit"
+                  name="SpecialtyUsesPrimaryCredit"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="FavoriteListIdToAddCode"
+                  name="FavoriteListIdToAddCode"
+                  type="hidden"
+                  value=""
+                /><input
+                  id="CodeIdToAddToFavList"
+                  name="CodeIdToAddToFavList"
+                  type="hidden"
+                  value="0"
+                /><input
+                  id="TypeToCodeIdToAddToFavList"
+                  name="TypeToCodeIdToAddToFavList"
+                  type="hidden"
+                  value="0"
+                /><input
+                  data-val="true"
+                  data-val-required="The Case Id field is required."
+                  id="CaseId"
+                  name="CaseId"
+                  type="hidden"
+                  value="0"
+                /><input
+                  data-val="true"
+                  data-val-required="The Is Orthopaedic Subspecialty field is required."
+                  id="IsOrthopaedicSubspecialty"
+                  name="IsOrthopaedicSubspecialty"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="CategoriesShortLabel"
+                  name="CategoriesShortLabel"
+                  type="hidden"
+                  value=""
+                /><input
+                  data-val="true"
+                  data-val-required="The Is Specialty Contains Code Message field is required."
+                  id="IsSpecialtyContainsCodeMessage"
+                  name="IsSpecialtyContainsCodeMessage"
+                  type="hidden"
+                  value="False"
+                /><input
+                  id="GetYearOptionsUrl"
+                  name="GetYearOptionsUrl"
+                  type="hidden"
+                  value="/ads/CaseLogs/CaseEntry/GetYearOptions"
+                /><input
+                  id="IsProgramAdmin"
+                  name="IsProgramAdmin"
+                  type="hidden"
+                  value="False"
+                /><input
+                  data-get-procedurefordupeverify-url="/ads/CaseLogs/CaseEntry/GetProcedureForDupeVerify"
+                  data-get-addcodeinfomessage-url="/ads/CaseLogs/CaseEntry/GetAddCodeInfoMessage"
+                  data-get-resident-roles-url="/ads/CaseLogs/Code/GetResidentRoles"
+                  id="HiddenUrlsLookups"
+                  name="HiddenUrls"
+                  type="hidden"
+                  value=""
+                />
+                <div class="alert-tabs" style="display: none"></div>
+                <!-- This partial is responsible for selecting the proper partials for codes entry for a given Specialty -->
+
+                <div class="card">
+                  <div class="card-body bg-light p-2">
+                    <div class="row">
+                      <div class="col-auto">
+                        <label class="col-form-label inline">Group </label>
+                      </div>
+                      <div class="col-3">
+                        <select
+                          class="form-select form-select-sm"
+                          id="procedures"
+                          name="procedures"
+                        >
+                          <option selected="selected" value="681">
+                            Procedures
+                          </option>
+                          <option value="680">
+                            Pain Consultations and Procedures
+                          </option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Render out templates using for loop -->
+                <div id="template_681" class="case-entry-panel">
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a data-bs-toggle="collapse" href="#ASAPhysicalStatus">
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>ASA Physical Status </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="ASAPhysicalStatus"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted">Non-emergency</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156628"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156628"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 1"
+                                data-category="Non-emergency"
+                              />1</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156632"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156632"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 2"
+                                data-category="Non-emergency"
+                              />2</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156634"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156634"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 3"
+                                data-category="Non-emergency"
+                              />3</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156636"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156636"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 4"
+                                data-category="Non-emergency"
+                              />4</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156630"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156630"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 5"
+                                data-category="Non-emergency"
+                              />5</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156631"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156631"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 6"
+                                data-category="Non-emergency"
+                              />6</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Emergency</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156629"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156629"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 1E"
+                                data-category="Emergency"
+                              />1E</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156633"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156633"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 2E"
+                                data-category="Emergency"
+                              />2E</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156635"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156635"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 3E"
+                                data-category="Emergency"
+                              />3E</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156637"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156637"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 4E"
+                                data-category="Emergency"
+                              />4E</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156626"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156626"
+                                data-area="ASA Physical Status"
+                                data-type="ASA 5E"
+                                data-category="Emergency"
+                              />5E</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#AnesthesiaAnalgesiatype"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Anesthesia / Analgesia type </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="AnesthesiaAnalgesiatype"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156646"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156646"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="Combined Spinal-Epidural (CSE)"
+                                data-category=""
+                              />CSE</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256332"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256332"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="Epidural"
+                                data-category=""
+                              />Epidural</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256330"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256330"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="General Maintenance"
+                                data-category=""
+                              />General Maintenance</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156641"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156641"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="MAC &amp;/or Sedation"
+                                data-category=""
+                              />MAC &amp;/or Sedation</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256331"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256331"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="Spinal"
+                                data-category=""
+                              />Spinal</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Peripheral nerve block</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156647"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156647"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="Peripheral Nerve Block Continuous"
+                                data-category="Peripheral nerve block"
+                              />Continuous</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156648"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156648"
+                                data-area="Anesthesia / Analgesia type"
+                                data-type="Peripheral Nerve Block Single Shot"
+                                data-category="Peripheral nerve block"
+                              />Single shot</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#AirwayManagementTechniques"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Airway Management Techniques </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="AirwayManagementTechniques"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256333"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256333"
+                                data-area="Airway Management Techniques"
+                                data-type="Supraglottic Airway"
+                                data-category=""
+                              />Supraglottic Airway</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Laryngoscope</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256334"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256334"
+                                data-area="Airway Management Techniques"
+                                data-type="Laryngoscope - Direct"
+                                data-category="Laryngoscope"
+                              />Direct</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256335"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256335"
+                                data-area="Airway Management Techniques"
+                                data-type="Laryngoscope - Indirect"
+                                data-category="Laryngoscope"
+                              />Indirect</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Intubation</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156654"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156654"
+                                data-area="Airway Management Techniques"
+                                data-type="Oral ETT"
+                                data-category="Intubation"
+                              />Oral ETT</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156655"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156655"
+                                data-area="Airway Management Techniques"
+                                data-type="Nasal ETT"
+                                data-category="Intubation"
+                              />Nasal ETT</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="2298046"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="2298046"
+                                data-area="Airway Management Techniques"
+                                data-type="Flexible Bronchoscopic"
+                                data-category="Intubation"
+                              />Flexible Bronchoscopic</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="2298047"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="2298047"
+                                data-area="Airway Management Techniques"
+                                data-type="Awake Intubation"
+                                data-category="Intubation"
+                              />Awake</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Lung Isolation</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156674"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156674"
+                                data-area="Airway Management Techniques"
+                                data-type="Bronchial Blocker"
+                                data-category="Lung Isolation"
+                              />Bronchial blocker</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256336"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256336"
+                                data-area="Airway Management Techniques"
+                                data-type="DLT"
+                                data-category="Lung Isolation"
+                              />DLT</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Other (airway management)</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256337"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256337"
+                                data-area="Airway Management Techniques"
+                                data-type="Airway Management - Other"
+                                data-category="Other (airway management)"
+                              />Airway Mgmt - Other</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156666"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156666"
+                                data-area="Airway Management Techniques"
+                                data-type="Jet Ventilation"
+                                data-category="Other (airway management)"
+                              />Jet ventilation</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156650"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156650"
+                                data-area="Airway Management Techniques"
+                                data-type="Mask"
+                                data-category="Other (airway management)"
+                              />Mask</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a data-bs-toggle="collapse" href="#Procedurecategory">
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Procedure category </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="Procedurecategory"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted">Cardiac</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156682"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156682"
+                                data-area="Procedure category"
+                                data-type="Cardiac without CPB"
+                                data-category="Cardiac"
+                              />W/out CPB</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156681"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156681"
+                                data-area="Procedure category"
+                                data-type="Cardiac with CPB"
+                                data-category="Cardiac"
+                              />With CPB</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Procedures Major Vessels</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156685"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156685"
+                                data-area="Procedure category"
+                                data-type="Procedures on major vessels (endovascular)"
+                                data-category="Procedures Major Vessels"
+                              />Procs on maj vessels (endo)</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156684"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156684"
+                                data-area="Procedure category"
+                                data-type="Procedures on major vessels (open)"
+                                data-category="Procedures Major Vessels"
+                              />Procs on major vessels</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Intracerebral</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156688"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156688"
+                                data-area="Procedure category"
+                                data-type="Intracerebral (endovascular)"
+                                data-category="Intracerebral"
+                              />Endovascular</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156689"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156689"
+                                data-area="Procedure category"
+                                data-type="Intracerebral Nonvascular (open)"
+                                data-category="Intracerebral"
+                              />Nonvascular open</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156687"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156687"
+                                data-area="Procedure category"
+                                data-type="Intracerebral Vascular (open)"
+                                data-category="Intracerebral"
+                              />Vascular (open)</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Delivery</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156692"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156692"
+                                data-area="Procedure category"
+                                data-type="Cesarean Section"
+                                data-category="Delivery"
+                              />Cesarean del</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156686"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156686"
+                                data-area="Procedure category"
+                                data-type="Cesarean Section High-Risk"
+                                data-category="Delivery"
+                              />Cesarean del high-risk</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156690"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156690"
+                                data-area="Procedure category"
+                                data-type="Vaginal Delivery"
+                                data-category="Delivery"
+                              />Vag del</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156691"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156691"
+                                data-area="Procedure category"
+                                data-type="Vaginal Delivery High-Risk"
+                                data-category="Delivery"
+                              />Vag del high-risk</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Other (procedure cat)</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156683"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156683"
+                                data-area="Procedure category"
+                                data-type="Intrathoracic non-cardiac"
+                                data-category="Other (procedure cat)"
+                              />Intrathoracic non-cardiac</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#SpecializedVascularAccess"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Specialized Vascular Access</strong>
+                      </a>
+                    </div>
+                    <div
+                      id="SpecializedVascularAccess"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256338"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256338"
+                                data-area="Specialized Vascular Access"
+                                data-type="Arterial Catheter"
+                                data-category=""
+                              />Arterial Catheter</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256339"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256339"
+                                data-area="Specialized Vascular Access"
+                                data-type="Central Venous Catheter"
+                                data-category=""
+                              />Central Venous Catheter</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                      <div class="panel-body">
+                        <p class="text-muted">Other (vasc access/mon)</p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156700"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156700"
+                                data-area="Specialized Vascular Access"
+                                data-type="Pulmonary Artery Catheter"
+                                data-category="Other (vasc access/mon)"
+                              />Pulmonary artery cath</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156693"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156693"
+                                data-area="Specialized Vascular Access"
+                                data-type="Ultrasound used for line placement"
+                                data-category="Other (vasc access/mon)"
+                              />Ultrasound for line place</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#SpecializedMonitoringTechniquesProcedures"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong
+                          >Specialized Monitoring Techniques /
+                          Procedures</strong
+                        >
+                      </a>
+                    </div>
+                    <div
+                      id="SpecializedMonitoringTechniquesProcedures"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256341"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256341"
+                                data-area="Specialized Monitoring Techniques / Procedures"
+                                data-type="CSF Drain"
+                                data-category=""
+                              />CSF Drain</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156708"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156708"
+                                data-area="Specialized Monitoring Techniques / Procedures"
+                                data-type="Electrophysiologic monitoring (SSEP, MEP, EMG, EEG"
+                                data-category=""
+                              />Electrophysiologic mon</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156707"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156707"
+                                data-area="Specialized Monitoring Techniques / Procedures"
+                                data-type="Transesophageal Echo (TEE)"
+                                data-category=""
+                              />TEE</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#NeuraxialBlockadeSiteOptional"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Neuraxial Blockade Site (Optional) </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="NeuraxialBlockadeSiteOptional"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156723"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156723"
+                                data-area="Neuraxial Blockade Site (Optional)"
+                                data-type="Caudal"
+                                data-category=""
+                              />Caudal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156719"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156719"
+                                data-area="Neuraxial Blockade Site (Optional)"
+                                data-type="Cervical"
+                                data-category=""
+                              />Cervical</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156722"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156722"
+                                data-area="Neuraxial Blockade Site (Optional)"
+                                data-type="Lumbar"
+                                data-category=""
+                              />Lumbar</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156720"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156720"
+                                data-area="Neuraxial Blockade Site (Optional)"
+                                data-type="T 1-7"
+                                data-category=""
+                              />T 1-7</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156721"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156721"
+                                data-area="Neuraxial Blockade Site (Optional)"
+                                data-type="T 8-12"
+                                data-category=""
+                              />T 8-12</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#PeripheralNerveBlockadeSiteOptional"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong
+                          >Peripheral Nerve Blockade Site (Optional)
+                        </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="PeripheralNerveBlockadeSiteOptional"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1911477"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1911477"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Adductor Canal"
+                                data-category=""
+                              />Adductor Canal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156730"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156730"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Ankle"
+                                data-category=""
+                              />Ankle</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156734"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156734"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Axillary"
+                                data-category=""
+                              />Axillary</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1911478"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1911478"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Erector Spinae Plane"
+                                data-category=""
+                              />Erector Spinae Plane</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156735"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156735"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Femoral"
+                                data-category=""
+                              />Femoral</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156732"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156732"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Infraclavicular"
+                                data-category=""
+                              />Infraclavicular</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156731"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156731"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Interscalene"
+                                data-category=""
+                              />Interscalene</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156737"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156737"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Lumbar Plexus"
+                                data-category=""
+                              />Lumbar Plexus</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156739"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156739"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Paravertebral"
+                                data-category=""
+                              />Paravertebral</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156729"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156729"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Popliteal"
+                                data-category=""
+                              />Popliteal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1911476"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1911476"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Quadratus Lumborum"
+                                data-category=""
+                              />Quadratus Lumborum</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156738"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156738"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Retrobulbar"
+                                data-category=""
+                              />Retrobulbar</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156740"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156740"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Saphenous"
+                                data-category=""
+                              />Saphenous</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156736"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156736"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Sciatic"
+                                data-category=""
+                              />Sciatic</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156733"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156733"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Supraclavicular"
+                                data-category=""
+                              />Supraclavicular</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1911475"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1911475"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Transverse Abdominal Plane"
+                                data-category=""
+                              />Transverse Abdominal Plane</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="1256340"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="1256340"
+                                data-area="Peripheral Nerve Blockade Site (Optional)"
+                                data-type="Other - peripheral nerve blockade site"
+                                data-category=""
+                              />Other-per nerve block sit</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  id="template_680"
+                  class="case-entry-panel"
+                  style="display: none"
+                >
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#PainEvaluation-NewPatient"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Pain Evaluation - New Patient </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="PainEvaluation-NewPatient"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156750"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156750"
+                                data-area="Pain Evaluation - New Patient"
+                                data-type="Acute pain consult"
+                                data-category=""
+                              />Acute pain consult</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156752"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156752"
+                                data-area="Pain Evaluation - New Patient"
+                                data-type="Cancer pain consult"
+                                data-category=""
+                              />Cancer pain consult</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156751"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156751"
+                                data-area="Pain Evaluation - New Patient"
+                                data-type="Chronic pain consult"
+                                data-category=""
+                              />Chronic pain consult</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a
+                        data-bs-toggle="collapse"
+                        href="#Painevaluation-Post-opevaluation"
+                      >
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Pain evaluation - Post-op evaluation </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="Painevaluation-Post-opevaluation"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156755"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156755"
+                                data-area="Pain evaluation - Post-op evaluation"
+                                data-type="Nerve catheter -Perineural PCA"
+                                data-category=""
+                              />Nerve cath-perineural PCA</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156756"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156756"
+                                data-area="Pain evaluation - Post-op evaluation"
+                                data-type="Other - post op pain evaluation"
+                                data-category=""
+                              />Other-post op pain eval</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156754"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156754"
+                                data-area="Pain evaluation - Post-op evaluation"
+                                data-type="PCA Pt Controlled Analgesia"
+                                data-category=""
+                              />PCA</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156753"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156753"
+                                data-area="Pain evaluation - Post-op evaluation"
+                                data-type="PCEA- Epidural Pt Controlled Analgesia"
+                                data-category=""
+                              />PCEA</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="panel panel-default panel-template">
+                    <div class="panel-heading d-grid">
+                      <a data-bs-toggle="collapse" href="#PainProcedures">
+                        <i
+                          class="icon-angle-down float-end icon-large"
+                          aria-hidden="true"
+                        ></i
+                        ><strong>Pain Procedures </strong>
+                      </a>
+                    </div>
+                    <div
+                      id="PainProcedures"
+                      class="panel-collapse collapse show"
+                    >
+                      <div class="panel-body">
+                        <p class="text-muted"></p>
+                        <div class="row">
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156757"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156757"
+                                data-area="Pain Procedures"
+                                data-type="Epidural (pain proc)"
+                                data-category=""
+                              />Epidural (pain proc)</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156758"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156758"
+                                data-area="Pain Procedures"
+                                data-type="Facet Procedure"
+                                data-category=""
+                              />Facet Procedure</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156759"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156759"
+                                data-area="Pain Procedures"
+                                data-type="Genitofemorial"
+                                data-category=""
+                              />Genitofemorial</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156760"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156760"
+                                data-area="Pain Procedures"
+                                data-type="Iliohypogastric"
+                                data-category=""
+                              />Iliohypogastric</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156761"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156761"
+                                data-area="Pain Procedures"
+                                data-type="Ilioinguinal"
+                                data-category=""
+                              />Ilioinguinal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156762"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156762"
+                                data-area="Pain Procedures"
+                                data-type="Intercostal"
+                                data-category=""
+                              />Intercostal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156765"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156765"
+                                data-area="Pain Procedures"
+                                data-type="Lateral Femoral Cutaneous"
+                                data-category=""
+                              />Lateral Femoral Cutaneous</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156766"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156766"
+                                data-area="Pain Procedures"
+                                data-type="Lumbar Sympathetic"
+                                data-category=""
+                              />Lumbar Sympathetic</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156767"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156767"
+                                data-area="Pain Procedures"
+                                data-type="Nerve Root"
+                                data-category=""
+                              />Nerve Root</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156764"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156764"
+                                data-area="Pain Procedures"
+                                data-type="Other - Pain Procedures"
+                                data-category=""
+                              />Other - Pain Procedures</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156768"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156768"
+                                data-area="Pain Procedures"
+                                data-type="Pudendal"
+                                data-category=""
+                              />Pudendal</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156769"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156769"
+                                data-area="Pain Procedures"
+                                data-type="Stellate Ganglion"
+                                data-category=""
+                              />Stellate Ganglion</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156770"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156770"
+                                data-area="Pain Procedures"
+                                data-type="Suprascapular"
+                                data-category=""
+                              />Suprascapular</label
+                            >
+                          </div>
+                          <div class="col-3">
+                            <label class="checkbox inline"
+                              ><input
+                                id="156763"
+                                type="checkbox"
+                                class="cbprocedureid"
+                                value="156763"
+                                data-area="Pain Procedures"
+                                data-type="Trigger Point"
+                                data-category=""
+                              />Trigger Point</label
+                            >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Summary view modal dialog  -->
+                <div id="summaryView" class="modal hide fade">
+                  <div class="modal-dialog">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5>Summary View</h5>
+                        <button
+                          type="button"
+                          class="btn-close float-end"
+                          data-bs-dismiss="modal"
+                          aria-hidden="true"
+                        ></button>
+                      </div>
+                      <div id="tableHolder" class="modal-body">
+                        <table
+                          id="summaryTable"
+                          class="table table-bordered table-striped"
+                        >
+                          <thead>
+                            <tr>
+                              <th>Type</th>
+                              <th>Area</th>
+                              <th>Category</th>
+                            </tr>
+                          </thead>
+                          <tbody></tbody>
+                        </table>
+                      </div>
+                      <div class="modal-footer">
+                        <a
+                          href="#"
+                          data-bs-dismiss="modal"
+                          class="btn btn-sm btn-light"
+                          >Close</a
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <script type="text/javascript">
+                  caseEntryApp.globals.CaseEntry99 =
+                    "#71291aeec5a9d7383731151a615f5f0d3418ffdea0630e0b8dfab7161a5854b8";
+                  caseEntryApp.globals.CaseEntry89 =
+                    "#5b1ce523d862b284baf78d6c3d9a600a957dbf929d880ddc9256ac5e8dd02b54";
+                </script>
+              </form>
+              <div id="back-to-top">
+                <hr />
+                <a
+                  href="#"
+                  class="btn btn-sm btn-link back-to-top"
+                  role="button"
+                  title=""
+                  data-bs-toggle="tooltip"
+                  data-bs-placement="right"
+                  data-bs-original-title="Click to return to the top of the page"
+                >
+                  <i class="icon-angle-up icon-large" aria-hidden="true"> </i
+                  >back to top
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="clear-fix">&nbsp;</div>
+        </div>
+        <div id="page-footer">
+          <ul class="list-unstyled float-end inline">
+            <li>
+              <small
+                ><a
+                  class="text-muted s software-updates"
+                  href="/ads/SharedArea/BuildNotes/Index"
+                  >Software Updates</a
+                ></small
+              >
+            </li>
+          </ul>
+          <p class="text-muted normal-footer">
+            <img
+              src="/ads/Content/imgs/acgme-logo.svg"
+              alt="ACGME"
+              onerror="this.onerror=null; this.src='/ads/Content/imgs/acgme-footer-logo.gif'"
+            />
+            <small
+              >© 2026 Accreditation Council for Graduate Medical Education
+              (ACGME)</small
+            >
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

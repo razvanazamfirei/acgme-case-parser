@@ -240,10 +240,10 @@ export const Form = {
       missing.push("Attending");
     }
     if (!data.asa) {
-      missing.push("ASA");
+      warnings.push("ASA");
     }
     if (!data.anesthesia) {
-      missing.push("Anesthesia Type");
+      warnings.push("Anesthesia Type");
     }
     if (!data.procedureCategory) {
       warnings.push("Procedure Category");

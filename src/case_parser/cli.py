@@ -32,6 +32,12 @@ Examples:
   # Basic conversion
   %(prog)s input.xlsx output.xlsx
 
+  # Process all Excel files in a directory
+  %(prog)s /path/to/excel/files/ combined_output.xlsx
+
+  # Process directory with source file tracking
+  %(prog)s /path/to/excel/files/ combined_output.xlsx --add-source-column
+
   # With custom sheet and year
   %(prog)s input.xlsx output.xlsx --sheet "Data" --default-year 2024
 
@@ -44,7 +50,10 @@ Examples:
     )
 
     # Required arguments
-    parser.add_argument("input_file", help="Input Excel file path (.xlsx or .xls)")
+    parser.add_argument(
+        "input_file",
+        help="Input Excel file path (.xlsx or .xls) or directory containing Excel files",
+    )
     parser.add_argument("output_file", help="Output Excel file path (.xlsx)")
 
     # Optional arguments
@@ -71,6 +80,11 @@ Examples:
         "--validation-report",
         help="Generate validation report (text, json, or excel format)",
         metavar="FILE",
+    )
+    parser.add_argument(
+        "--add-source-column",
+        action="store_true",
+        help="Add a 'Source File' column to track which file each case came from (useful with directory input)",
     )
 
     # Column override options
@@ -105,16 +119,73 @@ def validate_arguments(args: argparse.Namespace) -> None:
     output_path = Path(args.output_file)
 
     if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        raise FileNotFoundError(f"Input path not found: {input_path}")
 
-    if input_path.suffix.lower() not in {".xlsx", ".xls"}:
+    # If it's a file, check the extension
+    if input_path.is_file() and input_path.suffix.lower() not in {".xlsx", ".xls"}:
         raise ValueError(f"Unsupported input file format: {input_path.suffix}")
+
+    # If it's a directory, check that it contains Excel files
+    if input_path.is_dir():
+        excel_files = list(input_path.glob("*.xlsx")) + list(input_path.glob("*.xls"))
+        if not excel_files:
+            raise ValueError(f"No Excel files found in directory: {input_path}")
 
     if not output_path.suffix.lower() == ".xlsx":
         raise ValueError("Output file must have .xlsx extension")
 
     if args.default_year < 1900 or args.default_year > 2100:
         raise ValueError("Default year must be between 1900 and 2100")
+
+
+def find_excel_files(directory: Path) -> list[Path]:
+    """Find all Excel files in a directory."""
+    excel_files = []
+
+    # Find .xlsx files
+    excel_files.extend(sorted(directory.glob("*.xlsx")))
+
+    # Find .xls files
+    excel_files.extend(sorted(directory.glob("*.xls")))
+
+    return excel_files
+
+
+def process_single_file(
+    file_path: Path,
+    columns: ColumnMap,
+    default_year: int,
+    sheet_name: str | int | None,
+    add_source: bool = False,
+) -> tuple[list, str]:
+    """Process a single Excel file and return parsed cases and source filename.
+
+    Args:
+        file_path: Path to the Excel file
+        columns: Column mapping configuration
+        default_year: Default year for date parsing
+        sheet_name: Sheet name or index to read
+        add_source: Whether to track the source filename
+
+    Returns:
+        Tuple of (parsed_cases, source_filename)
+    """
+    console.print(f"[cyan]Processing:[/cyan] {file_path.name}")
+
+    # Read input file
+    df = read_excel(str(file_path), sheet_name=sheet_name or 0)
+
+    if df.empty:
+        console.print(f"[yellow]  Warning:[/yellow] {file_path.name} is empty, skipping")
+        return [], ""
+
+    # Process data
+    processor = CaseProcessor(columns, default_year)
+    parsed_cases = processor.process_dataframe(df)
+
+    console.print(f"[green]  ✓[/green] Parsed {len(parsed_cases)} cases from {file_path.name}")
+
+    return parsed_cases, file_path.name if add_source else ""
 
 
 def main() -> None:  # noqa: PLR0915
@@ -134,23 +205,70 @@ def main() -> None:  # noqa: PLR0915
 
         # Initialize handlers
         excel_handler = ExcelHandler()
+        input_path = Path(args.input_file)
 
-        # Read input file
-        df = read_excel(args.input_file, sheet_name=args.sheet or 0)
+        # Determine if input is a file or directory
+        all_parsed_cases = []
+        source_filenames = []
 
-        if df.empty:
-            console.print("[yellow]Warning:[/yellow] Input file is empty")
+        if input_path.is_file():
+            # Process single file
+            parsed_cases, source_name = process_single_file(
+                input_path,
+                columns,
+                args.default_year,
+                args.sheet,
+                args.add_source_column,
+            )
+            all_parsed_cases.extend(parsed_cases)
+            if args.add_source_column:
+                source_filenames.extend([source_name] * len(parsed_cases))
+
+        elif input_path.is_dir():
+            # Process all Excel files in directory
+            excel_files = find_excel_files(input_path)
+
+            if not excel_files:
+                console.print("[yellow]Warning:[/yellow] No Excel files found in directory")
+                return
+
+            console.print(
+                f"\n[bold cyan]Found {len(excel_files)} Excel file(s) in directory[/bold cyan]\n"
+            )
+
+            for excel_file in excel_files:
+                parsed_cases, source_name = process_single_file(
+                    excel_file,
+                    columns,
+                    args.default_year,
+                    args.sheet,
+                    args.add_source_column,
+                )
+                all_parsed_cases.extend(parsed_cases)
+                if args.add_source_column:
+                    source_filenames.extend([source_name] * len(parsed_cases))
+
+            console.print(
+                f"\n[bold green]Processed {len(excel_files)} files, "
+                f"total {len(all_parsed_cases)} cases[/bold green]\n"
+            )
+
+        if not all_parsed_cases:
+            console.print("[yellow]Warning:[/yellow] No cases to process")
             return
 
-        # Process data
+        # Convert to DataFrame
         processor = CaseProcessor(columns, args.default_year)
-        parsed_cases = processor.process_dataframe(df)
-        output_df = processor.cases_to_dataframe(parsed_cases)
+        output_df = processor.cases_to_dataframe(all_parsed_cases)
+
+        # Add source file column if requested
+        if args.add_source_column and source_filenames:
+            output_df.insert(0, "Source File", source_filenames)
 
         # Generate validation report if requested
         if args.validation_report:
             report_path = Path(args.validation_report)
-            report = ValidationReport(parsed_cases)
+            report = ValidationReport(all_parsed_cases)
 
             # Determine format from extension
             if report_path.suffix.lower() == ".json":

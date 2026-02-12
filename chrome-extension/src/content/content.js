@@ -112,13 +112,65 @@ const INSTITUTION_MAP = {
 
 function getFieldId(type) {
   if (type === "caseId") {
+    // Try multiple approaches to find the Case ID field
+    // 1. Check if the page has the field ID in JavaScript globals
+    if (
+      typeof caseEntryApp !== "undefined" &&
+      caseEntryApp?.globals?.CaseEntry99
+    ) {
+      const fieldId = caseEntryApp.globals.CaseEntry99.replace("#", "");
+      if (document.getElementById(fieldId)) {
+        return fieldId;
+      }
+    }
+
+    // 2. Try partial ID match (more flexible)
+    const byPartialId = document.querySelector('input[id^="71291"]');
+    if (byPartialId) {
+      return byPartialId.id;
+    }
+
+    // 3. Try finding by label text "Case ID"
+    const labels = document.querySelectorAll('label.form-label');
+    for (const label of labels) {
+      if (label.textContent.includes("Case ID")) {
+        const input = label.parentElement.querySelector(
+          'input[type="text"][maxlength="25"]',
+        );
+        if (input) {
+          return input.id;
+        }
+      }
+    }
+
+    // 4. Fallback to old selector
     const el = document.querySelector('input[id^="7129"]');
     return el ? el.id : null;
   }
+
   if (type === "date") {
+    // 1. Check if the page has the field ID in JavaScript globals
+    if (
+      typeof caseEntryApp !== "undefined" &&
+      caseEntryApp?.globals?.CaseEntry89
+    ) {
+      const fieldId = caseEntryApp.globals.CaseEntry89.replace("#", "");
+      if (document.getElementById(fieldId)) {
+        return fieldId;
+      }
+    }
+
+    // 2. Try partial ID match
+    const byPartialId = document.querySelector('input[id^="5b1ce"]');
+    if (byPartialId) {
+      return byPartialId.id;
+    }
+
+    // 3. Fallback to old selector
     const el = document.querySelector('input[id^="5b1c"]');
     return el ? el.id : null;
   }
+
   return null;
 }
 

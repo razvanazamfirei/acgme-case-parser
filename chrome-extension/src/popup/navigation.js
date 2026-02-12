@@ -38,9 +38,16 @@ export const Navigation = {
   update() {
     UI.get(DOM.currentIndex).textContent = (State.currentIndex + 1).toString();
     UI.get(DOM.totalCount).textContent = State.cases.length.toString();
+    UI.get(DOM.currentIndexBottom).textContent = (
+      State.currentIndex + 1
+    ).toString();
+    UI.get(DOM.totalCountBottom).textContent = State.cases.length.toString();
 
     UI.get(DOM.prevBtn).disabled = State.currentIndex === 0;
     UI.get(DOM.nextBtn).disabled = State.currentIndex >= State.cases.length - 1;
+    UI.get(DOM.prevBtnBottom).disabled = State.currentIndex === 0;
+    UI.get(DOM.nextBtnBottom).disabled =
+      State.currentIndex >= State.cases.length - 1;
 
     this._updateJumpDropdown();
     UI.updateStats();

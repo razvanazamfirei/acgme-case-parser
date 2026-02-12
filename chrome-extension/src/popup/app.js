@@ -50,6 +50,260 @@ const FileUpload = {
   },
 };
 
+const BeastMode = {
+  isActive: false,
+  shouldStop: false,
+  isPaused: false,
+  currentIndex: 0,
+  resumeCallback: null,
+
+  async start() {
+    if (this.isActive && !this.isPaused) {
+      return;
+    }
+
+    // If resuming from pause, just resume
+    if (this.isPaused) {
+      this.resume();
+      return;
+    }
+
+    // Starting fresh
+    this.isActive = true;
+    this.shouldStop = false;
+    this.isPaused = false;
+    this.currentIndex = 0;
+
+    // Update UI
+    const btn = UI.get(DOM.beastModeBtn);
+    const text = UI.get(DOM.beastModeText);
+    btn.classList.remove("bg-red-500", "hover:bg-red-600", "border-red-500");
+    btn.classList.add(
+      "bg-orange-500",
+      "hover:bg-orange-600",
+      "border-orange-500",
+      "beast-mode-active",
+    );
+    text.textContent = "⏸️ STOP BEAST MODE";
+
+    // Disable other action buttons during BEAST mode
+    UI.get(DOM.skipBtn).disabled = true;
+    UI.get(DOM.fillBtn).disabled = true;
+    UI.get(DOM.fillSubmitBtn).disabled = true;
+
+    UI.showStatus("🔥 BEAST MODE ACTIVATED - Processing cases...", "info");
+
+    try {
+      await this.processAllPending();
+    } catch (error) {
+      console.error("BEAST mode error:", error);
+      UI.showStatus(`BEAST mode error: ${error.message}`, "error");
+    } finally {
+      if (!this.isPaused) {
+        this.stop();
+      }
+    }
+  },
+
+  pause(message) {
+    this.isPaused = true;
+
+    // Update UI to show paused state
+    const btn = UI.get(DOM.beastModeBtn);
+    const text = UI.get(DOM.beastModeText);
+    btn.classList.remove(
+      "bg-orange-500",
+      "hover:bg-orange-600",
+      "border-orange-500",
+      "beast-mode-active",
+    );
+    btn.classList.add("bg-blue-500", "hover:bg-blue-600", "border-blue-500");
+    text.textContent = "▶️ CONTINUE BEAST MODE";
+
+    // Re-enable action buttons so user can fix things
+    UI.get(DOM.skipBtn).disabled = false;
+    UI.get(DOM.fillBtn).disabled = false;
+    UI.get(DOM.fillSubmitBtn).disabled = false;
+
+    UI.showStatus(message || "⏸️ BEAST mode paused", "info");
+  },
+
+  resume() {
+    this.isPaused = false;
+
+    // Update UI back to active state
+    const btn = UI.get(DOM.beastModeBtn);
+    const text = UI.get(DOM.beastModeText);
+    btn.classList.remove("bg-blue-500", "hover:bg-blue-600", "border-blue-500");
+    btn.classList.add(
+      "bg-orange-500",
+      "hover:bg-orange-600",
+      "border-orange-500",
+      "beast-mode-active",
+    );
+    text.textContent = "⏸️ STOP BEAST MODE";
+
+    // Disable action buttons again
+    UI.get(DOM.skipBtn).disabled = true;
+    UI.get(DOM.fillBtn).disabled = true;
+    UI.get(DOM.fillSubmitBtn).disabled = true;
+
+    UI.showStatus("🔥 BEAST MODE RESUMED - Processing cases...", "info");
+
+    // Call the resume callback if it exists
+    if (this.resumeCallback) {
+      this.resumeCallback();
+      this.resumeCallback = null;
+    }
+  },
+
+  stop() {
+    this.isActive = false;
+    this.shouldStop = true;
+    this.isPaused = false;
+    this.resumeCallback = null;
+
+    // Update UI
+    const btn = UI.get(DOM.beastModeBtn);
+    const text = UI.get(DOM.beastModeText);
+    btn.classList.remove(
+      "bg-orange-500",
+      "hover:bg-orange-600",
+      "border-orange-500",
+      "beast-mode-active",
+      "bg-blue-500",
+      "hover:bg-blue-600",
+      "border-blue-500",
+    );
+    btn.classList.add("bg-red-500", "hover:bg-red-600", "border-red-500");
+    text.textContent = "🔥 START BEAST MODE";
+
+    // Re-enable action buttons
+    UI.get(DOM.skipBtn).disabled = false;
+    UI.get(DOM.fillBtn).disabled = false;
+    UI.get(DOM.fillSubmitBtn).disabled = false;
+  },
+
+  async processAllPending() {
+    const totalCases = State.cases.length;
+    let processed = 0;
+
+    // Start from currentIndex (for resuming) or 0
+    const startIndex = this.currentIndex || 0;
+
+    for (let i = startIndex; i < totalCases; i++) {
+      this.currentIndex = i;
+
+      if (this.shouldStop) {
+        UI.showStatus(
+          `BEAST mode stopped. Processed ${processed} cases.`,
+          "info",
+        );
+        return;
+      }
+
+      // Wait if paused
+      if (this.isPaused) {
+        await new Promise((resolve) => {
+          this.resumeCallback = resolve;
+        });
+      }
+
+      // Skip non-pending cases
+      if (State.getCaseStatus(i) !== STATUS_TYPES.pending) {
+        continue;
+      }
+
+      // Navigate to this case
+      Navigation.goToCase(i);
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Brief pause for UI update
+
+      // Validate - pause if validation fails
+      const validation = Form.validate();
+      if (!validation.isValid) {
+        UI.showValidation(validation);
+        this.pause(
+          `⏸️ BEAST mode paused at case ${i + 1}/${totalCases}. Please complete required fields (${validation.missing.join(", ")}) and click CONTINUE.`,
+        );
+
+        // Wait for user to fix and continue
+        await new Promise((resolve) => {
+          this.resumeCallback = resolve;
+        });
+
+        // Re-validate after user fixes
+        const revalidation = Form.validate();
+        if (!revalidation.isValid) {
+          // Still invalid, pause again
+          i--; // Retry this case
+          continue;
+        }
+      }
+
+      try {
+        // Fill and submit the case
+        UI.showStatus(
+          `🔥 Processing case ${i + 1}/${totalCases}...`,
+          "info",
+        );
+
+        const result = await ACGMEForm.fill(true);
+
+        if (result?.success && result?.submitted) {
+          processed++;
+          UI.showStatus(
+            `✓ Case ${i + 1}/${totalCases} submitted! (${processed} total)`,
+            "success",
+          );
+        } else {
+          console.warn(`Case ${i + 1} failed to submit:`, result);
+          // Pause on submission failure
+          this.pause(
+            `⏸️ Case ${i + 1} failed to submit. Check the ACGME form and click CONTINUE to retry or STOP to end.`,
+          );
+          await new Promise((resolve) => {
+            this.resumeCallback = resolve;
+          });
+          i--; // Retry this case
+          continue;
+        }
+
+        // Random delay between 0.5-1 second
+        const delay = Math.random() * 500 + 500; // 500-1000ms
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } catch (error) {
+        console.error(`Error processing case ${i + 1}:`, error);
+        this.pause(
+          `⏸️ Error processing case ${i + 1}: ${error.message}. Click CONTINUE to retry or STOP to end.`,
+        );
+        await new Promise((resolve) => {
+          this.resumeCallback = resolve;
+        });
+        i--; // Retry this case
+        continue;
+      }
+    }
+
+    // Reset current index
+    this.currentIndex = 0;
+
+    // Find next pending case or finish
+    const nextPending = State.findNextPending(-1);
+    if (nextPending !== null) {
+      Navigation.goToCase(nextPending);
+      UI.showStatus(
+        `✓ Processed ${processed} cases! ${State.getStats().pending} cases remaining.`,
+        "success",
+      );
+    } else {
+      UI.showStatus(
+        `🎉 BEAST mode complete! Processed ${processed} cases. All done!`,
+        "success",
+      );
+    }
+  },
+};
+
 const Session = {
   async clear() {
     if (
@@ -59,11 +313,104 @@ const Session = {
     }
 
     try {
+      // Clear storage first
       await Storage.clearState();
-      Navigation.showUploadView();
+
+      // Reset the file input completely
+      const fileInput = UI.get(DOM.fileInput);
+      fileInput.value = "";
+      fileInput.type = "text";
+      fileInput.type = "file";
+
+      // Reset UI elements
       UI.get(DOM.fileName).textContent = "";
-      UI.get(DOM.fileInput).value = "";
-      UI.showStatus("Session cleared", "success");
+
+      // Clear form fields if they exist
+      const formFields = [
+        DOM.caseId,
+        DOM.date,
+        DOM.attending,
+        DOM.ageCategory,
+        DOM.asa,
+        DOM.anesthesia,
+        DOM.procedureCategory,
+        DOM.comments,
+      ];
+
+      formFields.forEach((fieldId) => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+          field.value = "";
+        }
+      });
+
+      // Clear checkboxes and radios
+      document
+        .querySelectorAll('input[type="checkbox"][name="airway"]')
+        .forEach((cb) => (cb.checked = false));
+      document
+        .querySelectorAll('input[type="checkbox"][name="vascular"]')
+        .forEach((cb) => (cb.checked = false));
+      document
+        .querySelectorAll('input[type="checkbox"][name="monitoring"]')
+        .forEach((cb) => (cb.checked = false));
+      document
+        .querySelectorAll('input[type="radio"][name="difficultAirway"]')
+        .forEach((radio) => (radio.checked = radio.value === ""));
+      document
+        .querySelectorAll('input[type="radio"][name="lifeThreateningPathology"]')
+        .forEach((radio) => (radio.checked = radio.value === ""));
+
+      // Reset navigation counters
+      const navElements = [
+        DOM.currentIndex,
+        DOM.totalCount,
+        DOM.currentIndexBottom,
+        DOM.totalCountBottom,
+        DOM.pendingCount,
+        DOM.submittedCount,
+        DOM.skippedCount,
+      ];
+
+      navElements.forEach((elementId) => {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.textContent = "0";
+        }
+      });
+
+      // Clear jump dropdown
+      const jumpSelect = UI.get(DOM.caseJump);
+      if (jumpSelect) {
+        jumpSelect.innerHTML = "";
+      }
+
+      // Hide validation summary
+      const validationSummary = UI.get(DOM.validationSummary);
+      if (validationSummary) {
+        validationSummary.classList.add("hidden");
+      }
+
+      // Reset button states
+      const fillSubmitBtn = UI.get(DOM.fillSubmitBtn);
+      if (fillSubmitBtn) {
+        fillSubmitBtn.disabled = false;
+      }
+
+      // Hide case preview and navigation sections
+      UI.hideSection(DOM.navSection);
+      UI.hideSection(DOM.previewSection);
+
+      // Show upload section
+      UI.showSection(DOM.uploadSection);
+
+      // Clear any status messages
+      UI.hideStatus();
+
+      // Show success message after a brief delay
+      setTimeout(() => {
+        UI.showStatus("Session cleared - ready for new file", "success");
+      }, 100);
     } catch (error) {
       console.error("Error clearing session:", error);
       UI.showStatus("Error clearing session", "error");
@@ -119,6 +466,12 @@ const EventHandlers = {
     addListener(DOM.nextBtn, "click", () =>
       Navigation.goToCase(State.currentIndex + 1),
     );
+    addListener(DOM.prevBtnBottom, "click", () =>
+      Navigation.goToCase(State.currentIndex - 1),
+    );
+    addListener(DOM.nextBtnBottom, "click", () =>
+      Navigation.goToCase(State.currentIndex + 1),
+    );
     addListener(DOM.caseJump, "change", (e) =>
       Navigation.goToCase(Number.parseInt(e.target.value, 10)),
     );
@@ -143,11 +496,13 @@ const EventHandlers = {
         return;
       }
 
+      if (validation.hasWarnings) {
+        UI.showValidation(validation);
+      }
+
       UI.get(DOM.fillBtn).disabled = true;
       try {
-        const result = await ACGMEForm.fill(false);
-        // Enable Submit only after a successful fill operation
-        UI.get(DOM.fillSubmitBtn).disabled = !result?.success;
+        await ACGMEForm.fill(false);
       } finally {
         UI.get(DOM.fillBtn).disabled = false;
       }
@@ -155,14 +510,18 @@ const EventHandlers = {
 
     addListener(DOM.fillSubmitBtn, "click", async () => {
       const validation = Form.validate();
-      if (!validation.isValid) {
+
+      // Show validation but don't block submission
+      if (!validation.isValid || validation.hasWarnings) {
         UI.showValidation(validation);
-        UI.showStatus(
-          "Please complete required fields before submitting",
-          "error",
-        );
-        return;
+        if (!validation.isValid) {
+          UI.showStatus(
+            "Warning: Some required fields are missing. Proceeding anyway.",
+            "info",
+          );
+        }
       }
+
       UI.get(DOM.fillSubmitBtn).disabled = true;
       try {
         await ACGMEForm.fill(true);
@@ -172,6 +531,20 @@ const EventHandlers = {
         ) {
           UI.get(DOM.fillSubmitBtn).disabled = false;
         }
+      }
+    });
+
+    // BEAST Mode
+    addListener(DOM.beastModeBtn, "click", () => {
+      if (BeastMode.isPaused) {
+        // Resume from pause
+        BeastMode.start();
+      } else if (BeastMode.isActive) {
+        // Stop active BEAST mode
+        BeastMode.stop();
+      } else {
+        // Start fresh
+        BeastMode.start();
       }
     });
 

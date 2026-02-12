@@ -1,5 +1,22 @@
 @import url("tailwindcss");
 
+/* BEAST Mode animation */
+@keyframes pulse-beast {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+  }
+}
+
+.beast-mode-active {
+  animation: pulse-beast 1.5s ease-in-out infinite;
+}
+
 /* Status badges - custom component */
 .status-badge {
   font-size: 0.625rem;

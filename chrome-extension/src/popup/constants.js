@@ -18,10 +18,14 @@ export const DOM = {
   // Navigation
   prevBtn: "prevBtn",
   nextBtn: "nextBtn",
+  prevBtnBottom: "prevBtnBottom",
+  nextBtnBottom: "nextBtnBottom",
   caseJump: "caseJump",
   filterPending: "filterPending",
   currentIndex: "currentIndex",
   totalCount: "totalCount",
+  currentIndexBottom: "currentIndexBottom",
+  totalCountBottom: "totalCountBottom",
   pendingCount: "pendingCount",
   submittedCount: "submittedCount",
   skippedCount: "skippedCount",
@@ -41,6 +45,8 @@ export const DOM = {
   skipBtn: "skipBtn",
   fillBtn: "fillBtn",
   fillSubmitBtn: "fillSubmitBtn",
+  beastModeBtn: "beastModeBtn",
+  beastModeText: "beastModeText",
 
   // Settings
   settingsToggle: "settingsToggle",
