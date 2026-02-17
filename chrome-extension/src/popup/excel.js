@@ -21,7 +21,7 @@ export const Excel = {
             return;
           }
 
-          const result = this._parseRows(rows);
+          const result = this.parseRows(rows);
           resolve(result);
         } catch (err) {
           reject(err);
@@ -33,9 +33,9 @@ export const Excel = {
     });
   },
 
-  _parseRows(rows) {
+  parseRows(rows) {
     const headers = rows[0].map((h) => String(h || "").trim());
-    const mappingResult = this._mapColumns(headers);
+    const mappingResult = this.mapColumns(headers);
     const colIndex = mappingResult.colIndex;
     const cases = [];
 
@@ -46,20 +46,20 @@ export const Excel = {
       }
 
       const caseData = {
-        caseId: this._getString(row, colIndex["Case ID"]),
-        date: this._formatDate(row[colIndex["Case Date"]]),
-        attending: this._getString(row, colIndex.Supervisor),
-        ageCategory: this._getString(row, colIndex.Age),
-        comments: this._getString(row, colIndex["Original Procedure"]),
-        asa: this._getString(row, colIndex["ASA Physical Status"]),
-        anesthesia: this._getString(row, colIndex["Anesthesia Type"]),
-        airway: this._getString(row, colIndex["Airway Management"]),
-        procedureCategory: this._getString(row, colIndex["Procedure Category"]),
-        vascularAccess: this._getString(
+        caseId: this.getString(row, colIndex["Case ID"]),
+        date: this.formatDate(row[colIndex["Case Date"]]),
+        attending: this.getString(row, colIndex.Supervisor),
+        ageCategory: this.getString(row, colIndex.Age),
+        comments: this.getString(row, colIndex["Original Procedure"]),
+        asa: this.getString(row, colIndex["ASA Physical Status"]),
+        anesthesia: this.getString(row, colIndex["Anesthesia Type"]),
+        airway: this.getString(row, colIndex["Airway Management"]),
+        procedureCategory: this.getString(row, colIndex["Procedure Category"]),
+        vascularAccess: this.getString(
           row,
           colIndex["Specialized Vascular Access"],
         ),
-        monitoring: this._getString(
+        monitoring: this.getString(
           row,
           colIndex["Specialized Monitoring Techniques"],
         ),
@@ -73,7 +73,7 @@ export const Excel = {
     return { cases, mappingResult };
   },
 
-  _mapColumns(headers) {
+  mapColumns(headers) {
     const colIndex = {};
     const mapped = [];
     const missing = [];
@@ -99,7 +99,7 @@ export const Excel = {
     };
   },
 
-  _getString(row, idx) {
+  getString(row, idx) {
     if (idx === undefined || idx === null) {
       return "";
     }
@@ -110,7 +110,7 @@ export const Excel = {
     return String(val).trim();
   },
 
-  _formatDate(val) {
+  formatDate(val) {
     if (!val) {
       return "";
     }

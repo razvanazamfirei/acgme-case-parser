@@ -55,5 +55,5 @@ Behavior:
 1. Installs dependencies in `chrome-extension/`
 2. Builds extension in `chrome-extension/dist/`
 3. Creates `acgme-case-submitter-v<version>.zip`
-4. Publishes artifact on manual run or tag push (`v*`)
+4. Publishes an artifact on a manual run or tag push (`v*`)
 5. Validates tag version matches `chrome-extension/manifest.json`

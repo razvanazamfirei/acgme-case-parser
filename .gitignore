@@ -22,6 +22,9 @@ develop-eggs/
 downloads/
 .installed.cfg
 
+# Training data
+Output-Supervised/
+
 # Virtual Environments
 .venv/
 venv/

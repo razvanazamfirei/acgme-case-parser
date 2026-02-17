@@ -69,10 +69,6 @@ export const UI = {
     }
   },
 
-  hideValidation() {
-    this.get("validationSummary").classList.add("hidden");
-  },
-
   showMatchBadge(fieldId, matchInfo) {
     if (!matchInfo || matchInfo.type === "exact" || matchInfo.type === "none") {
       return;

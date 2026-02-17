@@ -184,11 +184,11 @@ export const Form = {
       caseData.lifeThreateningPathology || "",
     );
 
-    this._apply5ELogic(caseData);
-    this._updateStatusBadge();
+    this.apply5ELogic(caseData);
+    this.updateStatusBadge();
   },
 
-  _apply5ELogic(caseData) {
+  apply5ELogic(caseData) {
     const isFiveE = caseData.asa?.toString().toUpperCase() === "5E";
     if (
       State.settings.auto5EPathology &&
@@ -199,7 +199,7 @@ export const Form = {
     }
   },
 
-  _updateStatusBadge() {
+  updateStatusBadge() {
     const status = State.getCaseStatus(State.currentIndex);
     const badge = UI.get(DOM.caseStatus);
     badge.className = `status-badge ${status}`;

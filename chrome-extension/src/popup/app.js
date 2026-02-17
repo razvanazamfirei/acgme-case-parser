@@ -12,6 +12,18 @@ import { State } from "./state.js";
 import { Storage } from "./storage.js";
 import { UI } from "./ui.js";
 
+const activeStyles = [
+  "bg-orange-500",
+  "hover:bg-orange-600",
+  "border-orange-500",
+  "beast-mode-active",
+];
+
+const beastModeStyles = {
+  paused: ["bg-blue-500", "hover:bg-blue-600", "border-blue-500"],
+  inactive: ["bg-red-500", "hover:bg-red-600", "border-red-500"],
+};
+
 const FileUpload = {
   async handleFile(file) {
     if (!file) {
@@ -57,6 +69,17 @@ const BeastMode = {
   currentIndex: 0,
   resumeCallback: null,
 
+  disableActionButtons() {
+    UI.get(DOM.skipBtn).disabled = true;
+    UI.get(DOM.fillBtn).disabled = true;
+    UI.get(DOM.fillSubmitBtn).disabled = true;
+  },
+
+  enableActionButtons() {
+    UI.get(DOM.skipBtn).disabled = false;
+    UI.get(DOM.fillBtn).disabled = false;
+    UI.get(DOM.fillSubmitBtn).disabled = false;
+  },
   async start() {
     if (this.isActive && !this.isPaused) {
       return;
@@ -77,19 +100,11 @@ const BeastMode = {
     // Update UI
     const btn = UI.get(DOM.beastModeBtn);
     const text = UI.get(DOM.beastModeText);
-    btn.classList.remove("bg-red-500", "hover:bg-red-600", "border-red-500");
-    btn.classList.add(
-      "bg-orange-500",
-      "hover:bg-orange-600",
-      "border-orange-500",
-      "beast-mode-active",
-    );
+    btn.classList.remove(...beastModeStyles.inactive);
+    btn.classList.add(...activeStyles);
     text.textContent = "STOP BEAST MODE";
 
-    // Disable other action buttons during BEAST mode
-    UI.get(DOM.skipBtn).disabled = true;
-    UI.get(DOM.fillBtn).disabled = true;
-    UI.get(DOM.fillSubmitBtn).disabled = true;
+    this.disableActionButtons();
 
     UI.showStatus("BEAST MODE ACTIVATED - Processing cases...", "info");
 
@@ -111,19 +126,12 @@ const BeastMode = {
     // Update UI to show paused state
     const btn = UI.get(DOM.beastModeBtn);
     const text = UI.get(DOM.beastModeText);
-    btn.classList.remove(
-      "bg-orange-500",
-      "hover:bg-orange-600",
-      "border-orange-500",
-      "beast-mode-active",
-    );
-    btn.classList.add("bg-blue-500", "hover:bg-blue-600", "border-blue-500");
+    btn.classList.remove(...activeStyles);
+    btn.classList.add(...beastModeStyles.paused);
     text.textContent = "CONTINUE BEAST MODE";
 
     // Re-enable action buttons so user can fix things
-    UI.get(DOM.skipBtn).disabled = false;
-    UI.get(DOM.fillBtn).disabled = false;
-    UI.get(DOM.fillSubmitBtn).disabled = false;
+    this.enableActionButtons();
 
     UI.showStatus(message || "BEAST mode paused", "info");
   },
@@ -134,19 +142,12 @@ const BeastMode = {
     // Update UI back to active state
     const btn = UI.get(DOM.beastModeBtn);
     const text = UI.get(DOM.beastModeText);
-    btn.classList.remove("bg-blue-500", "hover:bg-blue-600", "border-blue-500");
-    btn.classList.add(
-      "bg-orange-500",
-      "hover:bg-orange-600",
-      "border-orange-500",
-      "beast-mode-active",
-    );
+    btn.classList.remove(...beastModeStyles.paused);
+    btn.classList.add(...activeStyles);
     text.textContent = "STOP BEAST MODE";
 
     // Disable action buttons again
-    UI.get(DOM.skipBtn).disabled = true;
-    UI.get(DOM.fillBtn).disabled = true;
-    UI.get(DOM.fillSubmitBtn).disabled = true;
+    this.disableActionButtons();
 
     UI.showStatus("BEAST MODE RESUMED - Processing cases...", "info");
 
@@ -166,22 +167,12 @@ const BeastMode = {
     // Update UI
     const btn = UI.get(DOM.beastModeBtn);
     const text = UI.get(DOM.beastModeText);
-    btn.classList.remove(
-      "bg-orange-500",
-      "hover:bg-orange-600",
-      "border-orange-500",
-      "beast-mode-active",
-      "bg-blue-500",
-      "hover:bg-blue-600",
-      "border-blue-500",
-    );
-    btn.classList.add("bg-red-500", "hover:bg-red-600", "border-red-500");
+    btn.classList.remove(...activeStyles, ...beastModeStyles.paused);
+    btn.classList.add(...beastModeStyles.inactive);
     text.textContent = "START BEAST MODE";
 
     // Re-enable action buttons
-    UI.get(DOM.skipBtn).disabled = false;
-    UI.get(DOM.fillBtn).disabled = false;
-    UI.get(DOM.fillSubmitBtn).disabled = false;
+    this.enableActionButtons();
   },
 
   async processAllPending() {
@@ -287,15 +278,15 @@ const BeastMode = {
 
     // Find next pending case or finish
     const nextPending = State.findNextPending(-1);
-    if (nextPending !== null) {
-      Navigation.goToCase(nextPending);
+    if (nextPending === null) {
       UI.showStatus(
-        `Processed ${processed} cases! ${State.getStats().pending} cases remaining.`,
+        `BEAST mode complete! Processed ${processed} cases. All done!`,
         "success",
       );
     } else {
+      Navigation.goToCase(nextPending);
       UI.showStatus(
-        `🎉 BEAST mode complete! Processed ${processed} cases. All done!`,
+        `Processed ${processed} cases! ${State.getStats().pending} cases remaining.`,
         "success",
       );
     }

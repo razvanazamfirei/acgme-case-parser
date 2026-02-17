@@ -31,7 +31,7 @@ Content script performs DOM mapping/filling on ACGME pages.
 - `src/content.js`:
   - maps case values to ACGME control IDs
   - applies fill actions
-  - optionally clicks submit button
+  - optionally clicks the Submit button
   - responds to popup messages
 
 ## Data Flow
@@ -55,6 +55,6 @@ Content script performs DOM mapping/filling on ACGME pages.
 
 ## Reliability Rules
 
-- Fill result must be successful before enabling Submit
-- Submit result must be successful before marking case as submitted
-- Unknown or partial matches generate warnings instead of hard failures
+- Fill result must be successful before enabling Submit.
+- Submit result must be successful before marking the case as submitted.
+- Unknown or partial matches generate warnings instead of hard failures.

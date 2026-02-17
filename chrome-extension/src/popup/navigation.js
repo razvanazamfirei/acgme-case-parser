@@ -45,11 +45,11 @@ export const Navigation = {
     UI.get(DOM.nextBtnBottom).disabled =
       State.currentIndex >= State.cases.length - 1;
 
-    this._updateJumpDropdown();
+    this.updateJumpDropdown();
     UI.updateStats();
   },
 
-  _updateJumpDropdown() {
+  updateJumpDropdown() {
     const jumpSelect = UI.get(DOM.caseJump);
     const filterPending = UI.get(DOM.filterPending).checked;
 
@@ -73,11 +73,5 @@ export const Navigation = {
     UI.hideSection(DOM.uploadSection);
     UI.showSection(DOM.navSection);
     UI.showSection(DOM.previewSection);
-  },
-
-  showUploadView() {
-    UI.showSection(DOM.uploadSection);
-    UI.hideSection(DOM.navSection);
-    UI.hideSection(DOM.previewSection);
   },
 };

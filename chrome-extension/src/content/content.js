@@ -60,20 +60,14 @@ const LARYNGOSCOPY_MAP = {
 const PROCEDURE_CAT_MAP = {
   "Cardiac with CPB": "156681",
   "Cardiac without CPB": "156682",
-  Cardiac: "156682", // Fallback when CPB status unknown
   "Procedures on major vessels (endovascular)": "156685",
   "Procedures on major vessels (open)": "156684",
-  "Procedures Major Vessels": "156684",
   "Intracerebral (endovascular)": "156688",
   "Intracerebral Vascular (open)": "156687",
   "Intracerebral Nonvascular (open)": "156689",
-  Intracerebral: "156687",
-  "Cesarean del": "156692",
-  Cesarean: "156692",
-  "Vaginal del": "156690",
+  "Cesarean Delivery": "156692",
   "Vaginal Delivery": "156690",
   "Intrathoracic non-cardiac": "156683",
-  Intrathoracic: "156683",
   "Other (procedure cat)": null, // Explicitly handled
 };
 
@@ -273,7 +267,9 @@ function findAttendingId(name, returnAllMatches = false) {
 
   // Helper to check if a name part could be an initial for another
   const isInitialFor = (initial, fullName) => {
-    if (!initial || !fullName) return false;
+    if (!initial || !fullName) {
+      return false;
+    }
     return fullName.startsWith(initial.charAt(0));
   };
 

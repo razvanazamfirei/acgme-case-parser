@@ -1,22 +1,52 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true
     }
   },
+  "files": {
+    "ignoreUnknown": false,
+    "maxSize": 2097152,
+    "includes": [
+      "**",
+      "!!**/dist",
+      "!!**/node_modules",
+      "!!**/*.min.js",
+      "!!**/public/xlsx.min.js"
+    ]
+  },
   "formatter": {
     "enabled": true,
+    "formatWithErrors": false,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 80
+    "lineWidth": 80,
+    "attributePosition": "auto",
+    "bracketSameLine": false,
+    "bracketSpacing": true,
+    "expand": "auto",
+    "useEditorconfig": true
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "double",
+      "jsxQuoteStyle": "double",
+      "quoteProperties": "asNeeded",
+      "trailingCommas": "all",
       "semicolons": "always",
-      "trailingCommas": "all"
+      "arrowParentheses": "always",
+      "bracketSameLine": false,
+      "quoteStyle": "double",
+      "attributePosition": "auto",
+      "bracketSpacing": true
+    }
+  },
+  "html": {
+    "formatter": {
+      "indentScriptAndStyle": false,
+      "selfCloseVoidElements": "always"
     }
   },
   "css": {
@@ -32,24 +62,25 @@
       "enabled": false
     }
   },
-  "files": {
-    "maxSize": 2097152,
-    "includes": [
-      "**",
-      "!!**/dist",
-      "!!**/node_modules",
-      "!!**/*.min.js",
-      "!!**/public/xlsx.min.js"
-    ]
-  },
   "overrides": [
+    { "includes": ["*.scss"] },
+    {
+      "includes": ["*.md"],
+      "formatter": { "indentWidth": 2, "lineWidth": 80 }
+    },
+    { "includes": ["*.toml"], "formatter": { "indentWidth": 2 } },
+    {
+      "includes": ["xlsx.min.js", "xlsx.min.js"],
+      "linter": { "enabled": false },
+      "formatter": { "enabled": false }
+    },
     {
       "includes": ["src/popup/popup.css"],
       "linter": {
         "enabled": false
       },
       "formatter": {
-        "enabled": false
+        "enabled": true
       }
     }
   ]
