@@ -9,7 +9,7 @@ dependencies = [
   "pandas>=3.0.1",
   "pandas-stubs~=3.0.0",
   "pydantic==2.12.5",
-  "pydantic-core==2.41.5",
+  "pydantic-core==2.42.0",
   "requests>=2.31.0",
   "rich>=14.3.3",
   "pytest>=9.0.2",
