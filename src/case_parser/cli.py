@@ -243,7 +243,7 @@ def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
                 )
             )
 
-            df = read_csv_v2(
+            df, orphan_df = read_csv_v2(
                 input_path, add_source=args.add_source_column, column_map=columns
             )
 
@@ -257,6 +257,25 @@ def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
             # Preserve Source File column if added
             if args.add_source_column and "Source File" in df.columns:
                 output_df.insert(0, "Source File", df["Source File"])
+
+            # Process and write standalone (orphan) procedures if any
+            if not orphan_df.empty:
+                orphan_cases = processor.process_dataframe(orphan_df)
+                orphan_output_df = processor.cases_to_dataframe(orphan_cases)
+                if args.add_source_column and "Source File" in orphan_df.columns:
+                    orphan_output_df.insert(0, "Source File", orphan_df["Source File"])
+                standalone_path = output_file.with_stem(
+                    output_file.stem + "_standalone"
+                )
+                excel_handler.write_excel(
+                    orphan_output_df,
+                    str(standalone_path),
+                    fixed_widths={"Original Procedure": 12},
+                )
+                console.print(
+                    f"[cyan]Standalone procedures:[/cyan] {standalone_path} "
+                    f"({len(orphan_cases)} procedure(s))"
+                )
 
         # Excel format (original logic)
         else:

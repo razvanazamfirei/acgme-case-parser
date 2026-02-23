@@ -62,3 +62,11 @@ rm -rf *.egg-info
 find . -type d -name __pycache__ -exec rm -rf {} +
 find . -type f -name '*.pyc' -delete
 """
+
+[tasks.process-all]
+description = "Run the case parser on all Excel files in the input directory"
+run = "python batch_process.py"
+
+[tasks.sort-cases]
+description = "Sort cases in the input Excel file and save to output"
+run = "python sort_logs.py"

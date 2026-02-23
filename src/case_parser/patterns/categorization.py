@@ -82,8 +82,6 @@ def categorize_vascular(procedure_text: str) -> ProcedureCategory:
     approach = detect_approach(procedure_text)
     if approach == "endovascular":
         return ProcedureCategory.MAJOR_VESSELS_ENDOVASCULAR
-    if approach == "open":
-        return ProcedureCategory.MAJOR_VESSELS_OPEN
     return ProcedureCategory.MAJOR_VESSELS_OPEN
 
 
@@ -200,6 +198,26 @@ def categorize_procedure(
             obgyn_category = categorize_obgyn(procedure_text)
             if obgyn_category not in categories:
                 categories.append(obgyn_category)
+
+    # Fallback: infer category directly from procedure text when services are missing
+    if not categories and procedure_text:
+        for rule in PROCEDURE_RULES:
+            if not any(keyword in procedure_text for keyword in rule.keywords):
+                continue
+
+            if rule.exclude_keywords and any(
+                excl in procedure_text for excl in rule.exclude_keywords
+            ):
+                continue
+
+            categories.append(_apply_rule_category(rule.category, procedure_text))
+            break
+
+    # Additional fallback for OB/GYN descriptors directly in procedure text
+    if not categories and procedure_text:
+        obgyn_category = categorize_obgyn(procedure_text)
+        if obgyn_category != ProcedureCategory.OTHER:
+            categories.append(obgyn_category)
 
     # Fallback: Check for labor epidural even without OB service
     if (

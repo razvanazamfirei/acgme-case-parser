@@ -223,7 +223,7 @@ stop processing.
 - Main entry point: `categorize_procedure(procedure, services)`
 - Service matching against `PROCEDURE_RULES` (first match wins)
 - Specialized categorization for:
-  - `categorize_cardiac()` - CPB vs. non-CPB detection; defaults to generic `CARDIAC` when ambiguous
+  - `categorize_cardiac()` - CPB vs. non-CPB detection; defaults to `CARDIAC_WITH_CPB` when ambiguous
   - `categorize_vascular()` - Endovascular vs open approach
   - `categorize_intracerebral()` - Approach plus pathology detection
   - `categorize_obgyn()` - Cesarean vs vaginal delivery

@@ -67,8 +67,9 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     return pairs
 
 
-# Airway management ranking (higher rank = more invasive)
-AIRWAY_RANK = {
+# Invasiveness ranking for MPOG ProcedureName values (higher = more invasive/complex).
+# Used to select the primary anesthesia technique when a case has multiple procedures.
+TECHNIQUE_RANK = {
     "Intubation complex": 6,
     "Intubation routine": 5,
     "Spinal": 4,
@@ -78,30 +79,30 @@ AIRWAY_RANK = {
 }
 
 
-def _aggregate_procedures(proc_group: pd.DataFrame) -> pd.Series:
+def _select_primary_technique(proc_group: pd.DataFrame) -> pd.Series:
     """
-    Aggregate multiple procedures for one case.
+    Select the primary (most invasive) anesthesia technique for one case.
 
     Args:
         proc_group: DataFrame of procedures for one MPOG_Case_ID
 
     Returns:
-        Series with aggregated airway type (most invasive)
+        Series with the highest-ranked technique as Airway_Type
     """
-    # Extract all procedure names
-    airway_types = proc_group["ProcedureName"].dropna()
+    techniques = proc_group["ProcedureName"].dropna()
 
-    if airway_types.empty:
+    if techniques.empty:
         return pd.Series({"Airway_Type": None})
 
-    # Find most invasive airway
-    ranked = [(AIRWAY_RANK.get(a, 0), a) for a in airway_types]
-    most_invasive = max(ranked)[1] if ranked else None
+    ranked = [(TECHNIQUE_RANK.get(t, 0), t) for t in techniques]
+    primary = max(ranked)[1]
 
-    return pd.Series({"Airway_Type": most_invasive})
+    return pd.Series({"Airway_Type": primary})
 
 
-def join_case_and_procedures(case_df: DataFrame, proc_df: DataFrame) -> DataFrame:
+def join_case_and_procedures(
+    case_df: DataFrame, proc_df: DataFrame
+) -> tuple[DataFrame, DataFrame]:
     """
     Join case and procedure DataFrames, aggregating multiple procedures per case.
 
@@ -110,12 +111,27 @@ def join_case_and_procedures(case_df: DataFrame, proc_df: DataFrame) -> DataFram
         proc_df: ProcedureList DataFrame with MPOG_Case_ID
 
     Returns:
-        Joined DataFrame with aggregated procedure information
+        Tuple of (joined_df, orphan_procs_df) where orphan_procs_df contains
+        procedures whose MPOG_Case_ID has no matching entry in case_df (e.g.,
+        standalone labor epidurals, peripheral nerve catheters).
     """
+    # Identify orphan procedures before aggregation
+    orphan_procs = pd.DataFrame(columns=proc_df.columns if not proc_df.empty else [])
+    if not proc_df.empty:
+        case_ids = set(case_df["MPOG_Case_ID"])
+        orphan_mask = ~proc_df["MPOG_Case_ID"].isin(case_ids)
+        orphan_procs = proc_df[orphan_mask].copy().reset_index(drop=True)
+        if not orphan_procs.empty:
+            logger.info(
+                "Found %d orphan procedure(s) with no matching case", len(orphan_procs)
+            )
+
     # Group procedures by case ID and aggregate
     if not proc_df.empty:
         proc_agg = (
-            proc_df.groupby("MPOG_Case_ID").apply(_aggregate_procedures).reset_index()
+            proc_df.groupby("MPOG_Case_ID")
+            .apply(_select_primary_technique)
+            .reset_index()
         )
     else:
         proc_agg = pd.DataFrame(columns=["MPOG_Case_ID", "Airway_Type"])
@@ -129,7 +145,7 @@ def join_case_and_procedures(case_df: DataFrame, proc_df: DataFrame) -> DataFram
         result["Airway_Type"].isna().sum(),
     )
 
-    return result
+    return result, orphan_procs
 
 
 def _clean_attending_names(value: str) -> str:
@@ -145,13 +161,11 @@ def _clean_attending_names(value: str) -> str:
     if pd.isna(value):
         return ""
 
-    # Split on semicolon for multiple attendings
-    parts = str(value).split(";")
+    # Split on semicolon for multiple attendings, take only the first
+    first_part = str(value).split(";")[0]
 
     # Remove timestamp portion (everything after @)
-    cleaned = [part.split("@")[0].strip() for part in parts]
-
-    return "; ".join(cleaned)
+    return first_part.split("@")[0].strip()
 
 
 def map_csv_to_standard_columns(csv_df: DataFrame, column_map: ColumnMap) -> DataFrame:
@@ -186,6 +200,11 @@ def map_csv_to_standard_columns(csv_df: DataFrame, column_map: ColumnMap) -> Dat
             _clean_attending_names
         )
 
+    # CSV v2 airway values carry both anesthesia signal and airway technique hints.
+    # Populate procedure notes so airway extraction can run through the normal flow.
+    if "Airway_Type" in csv_df.columns:
+        result[column_map.procedure_notes] = csv_df["Airway_Type"]
+
     # CSV v2 doesn't have Services column - will derive from procedure text
     # Add empty services column for compatibility
     result[column_map.services] = ""
@@ -195,9 +214,44 @@ def map_csv_to_standard_columns(csv_df: DataFrame, column_map: ColumnMap) -> Dat
     return result
 
 
+def map_orphan_procedures(orphan_df: DataFrame, column_map: ColumnMap) -> DataFrame:
+    """
+    Map orphan procedure rows to standard column format.
+
+    Orphan procedures are ProcedureList entries whose MPOG_Case_ID has no
+    matching case in the CaseList (e.g., standalone labor epidurals, peripheral
+    nerve catheters). They carry only MPOG_Case_ID and ProcedureName.
+
+    Args:
+        orphan_df: DataFrame of orphan procedure rows
+        column_map: Target column mapping
+
+    Returns:
+        DataFrame with standard column names, suitable for CaseProcessor.
+    """
+    result = pd.DataFrame(index=orphan_df.index)
+    result[column_map.episode_id] = orphan_df.get("MPOG_Case_ID")
+    result[column_map.procedure] = orphan_df.get("ProcedureName")
+    # Use ProcedureName as anesthesia type hint (e.g. "Epidural", "Labor Epidural")
+    result[column_map.final_anesthesia_type] = orphan_df.get("ProcedureName")
+    # Also as procedure notes so airway/vascular extraction can inspect it
+    result[column_map.procedure_notes] = orphan_df.get("ProcedureName")
+    # Fill remaining required columns with NA
+    for col in [
+        column_map.date,
+        column_map.age,
+        column_map.asa,
+        column_map.anesthesiologist,
+        column_map.services,
+        column_map.emergent,
+    ]:
+        result[col] = pd.NA
+    return result.reset_index(drop=True)
+
+
 def read_csv_v2(
     directory: Path, add_source: bool = False, column_map: ColumnMap | None = None
-) -> DataFrame:
+) -> tuple[DataFrame, DataFrame]:
     """
     Read and join CSV v2 format files.
 
@@ -207,7 +261,9 @@ def read_csv_v2(
         column_map: Target column mapping (default: standard ColumnMap)
 
     Returns:
-        Joined DataFrame with standard column names
+        Tuple of (main_df, orphan_df) where orphan_df contains standalone
+        procedures (e.g., labor epidurals, peripheral nerve catheters) that
+        have no matching case in the CaseList. orphan_df is empty if none found.
     """
     directory = Path(directory)
     column_map = column_map or ColumnMap()
@@ -217,6 +273,7 @@ def read_csv_v2(
 
     # Read and join each pair
     all_dfs = []
+    all_orphan_dfs = []
     for case_file, proc_file in pairs:
         logger.info("Reading pair: %s, %s", case_file.name, proc_file.name)
 
@@ -225,14 +282,20 @@ def read_csv_v2(
         proc_df = pd.read_csv(proc_file)
 
         # Join
-        joined = join_case_and_procedures(case_df, proc_df)
+        joined, orphan_procs = join_case_and_procedures(case_df, proc_df)
+
+        prefix = case_file.name.replace(".CaseList.csv", "")
 
         # Add source column if requested (before mapping)
         if add_source:
-            prefix = case_file.name.replace(".CaseList.csv", "")
             joined["Source File"] = prefix
+            if not orphan_procs.empty:
+                orphan_procs = orphan_procs.copy()
+                orphan_procs["Source File"] = prefix
 
         all_dfs.append(joined)
+        if not orphan_procs.empty:
+            all_orphan_dfs.append(orphan_procs)
 
     # Combine all pairs
     combined = pd.concat(all_dfs, ignore_index=True)
@@ -246,4 +309,14 @@ def read_csv_v2(
 
     logger.info("Read total of %d cases from %d file pair(s)", len(result), len(pairs))
 
-    return result
+    # Combine and map orphan procedures
+    if all_orphan_dfs:
+        orphan_combined = pd.concat(all_orphan_dfs, ignore_index=True)
+        orphan_result = map_orphan_procedures(orphan_combined, column_map)
+        if add_source and "Source File" in orphan_combined.columns:
+            orphan_result["Source File"] = orphan_combined["Source File"].values
+        logger.info("Found %d total orphan procedure(s)", len(orphan_result))
+    else:
+        orphan_result = pd.DataFrame()
+
+    return result, orphan_result

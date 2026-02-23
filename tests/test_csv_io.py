@@ -1,8 +1,15 @@
 """Tests for CSV v2 format I/O operations."""
 
+import pandas as pd
 import pytest
 
-from case_parser.csv_io import discover_csv_pairs
+from case_parser.csv_io import (
+    discover_csv_pairs,
+    join_case_and_procedures,
+    map_csv_to_standard_columns,
+    map_orphan_procedures,
+)
+from case_parser.models import ColumnMap
 
 
 def test_discover_csv_pairs_finds_matching_files(tmp_path):
@@ -48,3 +55,106 @@ def test_discover_csv_pairs_unpaired_files_warns(tmp_path, caplog):
         discover_csv_pairs(tmp_path)
 
     assert "unpaired" in caplog.text.lower()
+
+
+def test_map_csv_to_standard_columns_populates_procedure_notes_from_airway_type():
+    """CSV v2 airway value should be available for downstream airway extraction."""
+    csv_df = pd.DataFrame(
+        {
+            "MPOG_Case_ID": ["abc-123"],
+            "AIMS_Scheduled_DT": ["2025-01-01 08:00:00"],
+            "AIMS_Patient_Age_Years": [42],
+            "ASA_Status": [2],
+            "AIMS_Actual_Procedure_Text": ["Appendectomy"],
+            "Airway_Type": ["Intubation routine"],
+            "AnesAttendings": ["DOE, JANE@2025-01-01 08:00:00"],
+        }
+    )
+    column_map = ColumnMap()
+
+    result = map_csv_to_standard_columns(csv_df, column_map)
+
+    assert result.loc[0, column_map.final_anesthesia_type] == "Intubation routine"
+    assert result.loc[0, column_map.procedure_notes] == "Intubation routine"
+
+
+# --- join_case_and_procedures orphan detection ---
+
+def _make_case_df(*case_ids):
+    """Build a minimal CaseList DataFrame with the given MPOG_Case_IDs."""
+    return pd.DataFrame({"MPOG_Case_ID": list(case_ids)})
+
+
+def _make_proc_df(*rows):
+    """Build a ProcedureList DataFrame from (MPOG_Case_ID, ProcedureName) pairs."""
+    return pd.DataFrame(rows, columns=["MPOG_Case_ID", "ProcedureName"])
+
+
+def test_join_returns_no_orphans_when_all_matched():
+    case_df = _make_case_df("C1", "C2")
+    proc_df = _make_proc_df(("C1", "Intubation routine"), ("C2", "Epidural"))
+
+    joined, orphans = join_case_and_procedures(case_df, proc_df)
+
+    assert len(joined) == 2
+    assert orphans.empty
+
+
+def test_join_detects_orphan_procedures():
+    case_df = _make_case_df("C1")
+    proc_df = _make_proc_df(
+        ("C1", "Intubation routine"),
+        ("ORPHAN-1", "Labor Epidural"),
+        ("ORPHAN-2", "Peripheral nerve block"),
+    )
+
+    joined, orphans = join_case_and_procedures(case_df, proc_df)
+
+    assert len(joined) == 1
+    assert len(orphans) == 2
+    assert set(orphans["MPOG_Case_ID"]) == {"ORPHAN-1", "ORPHAN-2"}
+    assert set(orphans["ProcedureName"]) == {"Labor Epidural", "Peripheral nerve block"}
+
+
+def test_join_with_empty_proc_df():
+    case_df = _make_case_df("C1")
+    proc_df = pd.DataFrame(columns=["MPOG_Case_ID", "ProcedureName"])
+
+    joined, orphans = join_case_and_procedures(case_df, proc_df)
+
+    assert len(joined) == 1
+    assert orphans.empty
+
+
+# --- map_orphan_procedures ---
+
+def test_map_orphan_procedures_maps_required_columns():
+    column_map = ColumnMap()
+    orphan_df = _make_proc_df(
+        ("ORPHAN-1", "Labor Epidural"),
+        ("ORPHAN-2", "Peripheral nerve block"),
+    )
+
+    result = map_orphan_procedures(orphan_df, column_map)
+
+    assert list(result[column_map.episode_id]) == ["ORPHAN-1", "ORPHAN-2"]
+    assert list(result[column_map.procedure]) == ["Labor Epidural", "Peripheral nerve block"]
+    assert list(result[column_map.final_anesthesia_type]) == [
+        "Labor Epidural",
+        "Peripheral nerve block",
+    ]
+    assert list(result[column_map.procedure_notes]) == [
+        "Labor Epidural",
+        "Peripheral nerve block",
+    ]
+
+
+def test_map_orphan_procedures_fills_na_for_demographics():
+    column_map = ColumnMap()
+    orphan_df = _make_proc_df(("ORPHAN-1", "Labor Epidural"))
+
+    result = map_orphan_procedures(orphan_df, column_map)
+
+    assert pd.isna(result.loc[0, column_map.date])
+    assert pd.isna(result.loc[0, column_map.age])
+    assert pd.isna(result.loc[0, column_map.asa])
