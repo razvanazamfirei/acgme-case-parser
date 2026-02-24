@@ -274,10 +274,8 @@ def save_validation_report(cases: list[ParsedCase], report_path: Path) -> None:
     report = ValidationReport(cases)
     report.save_report(report_path, output_format=format_type)
 
-    console.print(
-        f"\n[green]Validation report saved to:[/green] {report_path}",
-        Panel("[bold]Validation Summary[/bold]", border_style="cyan"),
-    )
+    console.print(f"\n[green]Validation report saved to:[/green] {report_path}")
+    console.print(Panel("[bold]Validation Summary[/bold]", border_style="cyan"))
     print_validation_summary(report.get_summary())
 
 
@@ -320,6 +318,7 @@ def get_output_summary(df: pd.DataFrame) -> dict[str, Any]:
             "columns": list(df.columns),
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
             "empty_cases": (not df["Case ID"].fillna("").astype(str).str.strip()).sum(),
 ||||||| parent of 8cb903d (refactor: consolidate csv_io into io.py and introduce CsvHandler class)
 def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
@@ -331,6 +330,13 @@ def main() -> None:  # noqa: PLR0912, PLR0914, PLR0915
 =======
             "empty_cases": (not df["Case ID"].fillna("").astype(str).str.strip()).sum(),
 >>>>>>> 44c4f7b (PR comments)
+||||||| parent of 1ef5eaf (fix: address PR review findings in io, cli, and batch_process)
+            "empty_cases": (not df["Case ID"].fillna("").astype(str).str.strip()).sum(),
+=======
+            "empty_cases": (
+                df["Case ID"].fillna("").astype(str).str.strip().eq("").sum()
+            ),
+>>>>>>> 1ef5eaf (fix: address PR review findings in io, cli, and batch_process)
             "missing_dates": df["Case Date"].isna().sum(),
         }
     except Exception as e:
@@ -350,9 +356,9 @@ def print_summary(output_file: Path, summary: dict[str, Any]) -> None:
     table.add_row("Date range:", summary["date_range"])
     console.print(table)
 
-    if summary["empty_cases"] > 0:
+    if summary.get("empty_cases", 0) > 0:
         console.print(
-            f"  [yellow]Warning:[/yellow] {summary['empty_cases']} "
+            f"  [yellow]Warning:[/yellow] {summary.get('empty_cases', 0)} "
             "cases have empty Case IDs"
         )
 

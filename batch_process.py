@@ -54,6 +54,7 @@ from src.case_parser.processor import CaseProcessor
 # Suppress noisy logging from the pipeline
 logging.getLogger("case_parser").setLevel(logging.WARNING)
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -96,7 +97,9 @@ def process_resident(
     case_df = pd.read_csv(case_file)
     proc_df = pd.read_csv(proc_file)
 
-    joined, _ = join_case_and_procedures(case_df, proc_df)
+    joined, orphans = join_case_and_procedures(case_df, proc_df)
+    if not orphans.empty:
+        logger.info("%s: %d orphan procedure(s) skipped", name, len(orphans))
     if joined.empty:
         return 0
 
