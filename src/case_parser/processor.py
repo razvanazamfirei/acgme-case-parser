@@ -291,6 +291,7 @@ class CaseProcessor:
         raw_services = row.get(self.column_map.services)
         services = []
 <<<<<<< HEAD
+<<<<<<< HEAD
         if not (raw_services is None or pd.isna(raw_services)):
 ||||||| parent of 8cb903d (refactor: consolidate csv_io into io.py and introduce CsvHandler class)
         # Handle None/NaN and ensure newline-separated values are split
@@ -303,6 +304,14 @@ class CaseProcessor:
             or (isinstance(raw_services, float) and pd.isna(raw_services))
         ):
 >>>>>>> 8cb903d (refactor: consolidate csv_io into io.py and introduce CsvHandler class)
+||||||| parent of 44c4f7b (PR comments)
+        if not (
+            raw_services is None
+            or (isinstance(raw_services, float) and pd.isna(raw_services))
+        ):
+=======
+        if not (raw_services is None or pd.isna(raw_services)):
+>>>>>>> 44c4f7b (PR comments)
             services = [s.strip() for s in str(raw_services).split("\n") if s.strip()]
 
         # Determine procedure category
