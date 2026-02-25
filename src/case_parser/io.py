@@ -30,6 +30,11 @@ def read_excel(file_path: str | Path, sheet_name: str | int = 0) -> DataFrame:
 
     Returns:
         DataFrame containing the sheet data
+
+    Raises:
+        FileNotFoundError: If the file does not exist at file_path.
+        ValueError: If the file extension is not ``.xlsx`` or ``.xls``.
+        TypeError: If sheet_name resolves to multiple sheets.
     """
     file_path = Path(file_path)
 
@@ -59,7 +64,12 @@ class ExcelHandler:
     """Handles Excel file output operations."""
 
     def __init__(self, max_width: int = 60):
-        """Initialize with maximum column width setting."""
+        """Initialize with maximum column width setting.
+
+        Args:
+            max_width: Maximum column width in characters applied during
+                auto-sizing. Columns wider than this are capped.
+        """
         self.max_width = max_width
 
     def write_excel(
@@ -69,7 +79,19 @@ class ExcelHandler:
         sheet_name: str = "CaseLog",
         fixed_widths: dict[str, int] | None = None,
     ) -> None:
-        """Write DataFrame to Excel file with auto-sized columns."""
+        """Write DataFrame to Excel file with auto-sized columns.
+
+        Args:
+            df: DataFrame to write.
+            file_path: Destination file path. Parent directories are created
+                automatically.
+            sheet_name: Name of the worksheet to create.
+            fixed_widths: Optional mapping of column name to a fixed character
+                width, bypassing auto-sizing for those columns.
+
+        Raises:
+            PermissionError: If the file is open in another application.
+        """
         file_path = Path(file_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -95,7 +117,19 @@ class ExcelHandler:
         sheet_name: str,
         fixed_widths: dict[str, int] | None = None,
     ) -> None:
-        """Set column widths based on content length."""
+        """Set column widths based on content length.
+
+        Iterates over every column in the DataFrame and sets the worksheet
+        column width to the maximum string length of the header or any cell
+        value, capped at self.max_width. Columns listed in fixed_widths receive
+        that exact width instead.
+
+        Args:
+            writer: Active ExcelWriter with the worksheet already written.
+            df: DataFrame whose column data is used to calculate widths.
+            sheet_name: Name of the worksheet to resize.
+            fixed_widths: Mapping of column name to exact character width.
+        """
         worksheet = writer.sheets[sheet_name]
         fixed_widths = fixed_widths or {}
 
@@ -222,11 +256,23 @@ class CsvHandler:
     """Handles MPOG supervised-export CSV v2 format reading."""
 
     def __init__(self, column_map: ColumnMap | None = None):
-        """Initialize with column mapping (default: standard ColumnMap)."""
+        """Initialize with column mapping.
+
+        Args:
+            column_map: Column mapping to use when normalizing CSV columns.
+                Defaults to a standard ColumnMap if not provided.
+        """
         self.column_map = column_map or ColumnMap()
 
     def read(self, directory: Path) -> tuple[DataFrame, DataFrame]:
         """Read and join CSV v2 format files from a directory.
+
+        Discovers all CaseList/ProcedureList pairs in the directory, joins
+        each pair, and concatenates the results.
+
+        Args:
+            directory: Directory containing matching *.CaseList.csv and
+                *.ProcedureList.csv file pairs.
 
         Returns:
             Tuple of (main_df, orphan_df) where orphan_df contains standalone
@@ -263,7 +309,20 @@ class CsvHandler:
         return result, orphan_result
 
     def normalize_columns(self, csv_df: DataFrame) -> DataFrame:
-        """Map CSV v2 columns to standard ColumnMap field names."""
+        """Map CSV v2 columns to standard ColumnMap field names.
+
+        Renames MPOG export columns to the names expected by downstream
+        processors, derives the anesthesiologist field from AnesAttendings,
+        copies Airway_Type into procedure_notes for airway extraction, and
+        fills any still-missing standard columns with pd.NA.
+
+        Args:
+            csv_df: Raw joined DataFrame produced from a CaseList/ProcedureList
+                pair before column normalization.
+
+        Returns:
+            DataFrame with columns matching self.column_map field values.
+        """
         column_map = self.column_map
         result = csv_df.rename(
             columns={
@@ -308,6 +367,15 @@ class CsvHandler:
         Orphan procedures are ProcedureList entries whose MPOG_Case_ID has no
         matching case in the CaseList (e.g., standalone labor epidurals, peripheral
         nerve catheters). They carry only MPOG_Case_ID and ProcedureName.
+
+        Args:
+            orphan_df: DataFrame of unmatched ProcedureList rows with at least
+                MPOG_Case_ID and ProcedureName columns.
+
+        Returns:
+            DataFrame with columns matching self.column_map field values.
+            Date, age, ASA, anesthesiologist, services, and emergent fields
+            are filled with pd.NA.
         """
         column_map = self.column_map
         result = pd.DataFrame(index=orphan_df.index)

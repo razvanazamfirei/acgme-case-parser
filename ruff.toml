@@ -55,3 +55,4 @@ target-version = "py313"
   line-ending               = "auto"
   quote-style               = "double"
   skip-magic-trailing-comma = false
+  preview = true

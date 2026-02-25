@@ -54,7 +54,16 @@ class ProcessConfig:
 
 
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
-    """Find matching case/procedure file pairs."""
+    """Find matching case/procedure file pairs.
+
+    Args:
+        case_dir: Directory containing ``*.CaseList.csv`` files.
+        proc_dir: Directory containing ``*.ProcedureList.csv`` files.
+
+    Returns:
+        Sorted list of ``(name, case_path, proc_path)`` tuples for residents
+        that have both a CaseList and a ProcedureList file.
+    """
     case_files = {
         f.name.replace(".Supervised.CaseList.csv", ""): f
         for f in case_dir.glob("*.CaseList.csv")
@@ -68,7 +77,15 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
 
 
 def format_name(name: str) -> str:
-    """LAST_FIRST -> First Last."""
+    """Convert ``LAST_FIRST`` filename stem to ``First Last`` display name.
+
+    Args:
+        name: Filename stem in ``LAST_FIRST`` format (underscore-separated).
+
+    Returns:
+        Title-cased ``First Last`` string, or the original name title-cased
+        if no underscore separator is found.
+    """
     parts = name.split("_", 1)
     if len(parts) == 2:
         return f"{parts[1].title()} {parts[0].title()}"
@@ -82,6 +99,18 @@ def process_resident(
     orphan_notices: list[tuple[str, int, str]],
     orphan_notices_lock: threading.Lock,
 ) -> int:
+    """Process one resident's files and write output Excel.
+
+    Args:
+        name: Resident identifier (``LAST_FIRST`` format) used for output filenames.
+        case_file: Path to the resident's CaseList CSV.
+        proc_file: Path to the resident's ProcedureList CSV.
+        config: Shared processing configuration (output dir, column map, handlers).
+
+    Returns:
+        Number of cases written to the output Excel file, or 0 if there were
+        no joined cases to process.
+    """
     name: str
     case_file: Path
     proc_file: Path

@@ -15,7 +15,16 @@ from pathlib import Path
 
 
 def normalize_name(raw: str) -> list[str]:
-    """Return candidate lookup keys for a name, handling parenthetical variants."""
+    """Return candidate lookup keys for a name, handling parenthetical variants.
+
+    Args:
+        raw: Full name string, optionally containing parenthetical suffixes
+            (e.g., ``"Jane A. Smith (Jones)"``) or quoted nicknames.
+
+    Returns:
+        List of candidate strings to try as lookup keys, from most specific
+        to least specific.
+    """
     no_parens = re.sub(r"\s*\([^)]+\)", "", raw).strip()
     no_quotes = re.sub(r'\s*"[^"]+"\s*', " ", no_parens).strip()
     words = no_quotes.split()

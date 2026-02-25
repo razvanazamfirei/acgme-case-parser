@@ -27,7 +27,11 @@ CATEGORY_MAP = {str(i + 1): cat for i, cat in enumerate(CATEGORIES)}
 
 
 def normalize_category_label(category: str | None) -> str:
-    """Normalize category labels to canonical enum values."""
+    """Normalize category labels to canonical enum values.
+
+    Returns:
+        Canonical category string from ProcedureCategory enum values.
+    """
     if category is None:
         return ProcedureCategory.OTHER.value
     normalized = category.strip()
@@ -61,7 +65,12 @@ def get_category_from_input(user_input: str) -> str | None:
 
 
 def run_python_script(script_path: Path, argv: list[str]) -> int:
-    """Run a Python script in-process and return its exit code."""
+    """Run a Python script in-process and return its exit code.
+
+    Returns:
+        Exit code from the script's SystemExit, or 0 if the script completes
+        without raising SystemExit.
+    """
     original_argv = sys.argv[:]
     sys.argv = [str(script_path), *argv]
     try:

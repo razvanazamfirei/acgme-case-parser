@@ -53,7 +53,11 @@ class ArtifactMetadataInput:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser for optimized trainer."""
+    """Build CLI parser for optimized trainer.
+
+    Returns:
+        Configured ArgumentParser for the optimized training tool.
+    """
     parser = argparse.ArgumentParser(
         description="Train optimized ML model for procedure categorization"
     )
@@ -225,7 +229,11 @@ def train_ensemble_model(
     x_val: np.ndarray[Any, Any],
     y_val: np.ndarray[Any, Any],
 ) -> TrainArtifacts:
-    """Train candidate models and return the best performer."""
+    """Train candidate models and return the best performer.
+
+    Returns:
+        TrainArtifacts containing the best model, feature extractor, score, and name.
+    """
     feature_extractor, x_train_features, x_val_features = _extract_feature_matrices(
         x_train,
         x_val,
@@ -360,7 +368,11 @@ def _save_model_artifact(
 
 
 def main() -> int:
-    """Train optimized ML model."""
+    """Train optimized ML model.
+
+    Returns:
+        0 on success, 1 if required columns are missing from the input dataset.
+    """
     args = build_parser().parse_args()
 
     _print_header(args.input, args.output)

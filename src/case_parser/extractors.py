@@ -63,6 +63,15 @@ def extract_attending(value: str) -> str:
 
     Input format: "DOE, JOHN@2023-01-01 08:00:00" or semicolon-separated list.
     Returns the first name with the timestamp stripped.
+
+    Args:
+        value: Raw attending name string from the MPOG AnesAttendings field.
+            May be NaN or contain multiple semicolon-separated entries, each
+            optionally followed by an "@timestamp" suffix.
+
+    Returns:
+        First attending name with the timestamp removed, or an empty string
+        if value is NaN.
     """
     if pd.isna(value):
         return ""

@@ -144,7 +144,11 @@ class RetrainPaths:
 
 
 def _procedure_title(procedure: str, max_length: int = 96) -> str:
-    """Build a compact procedure title from free-form procedure text."""
+    """Build a compact procedure title from free-form procedure text.
+
+    Returns:
+        Truncated title string, at most max_length characters.
+    """
     title = procedure.split(";", 1)[0].strip()
     if not title:
         return "Procedure"
@@ -154,7 +158,11 @@ def _procedure_title(procedure: str, max_length: int = 96) -> str:
 
 
 def _recommendation_source(rule_match: bool, ml_match: bool) -> str:
-    """Describe which assessment(s) produced the recommendation."""
+    """Describe which assessment(s) produced the recommendation.
+
+    Returns:
+        Human-readable string naming the source(s) of the recommendation.
+    """
     if rule_match and ml_match:
         return "Rule-based + ML-based"
     if rule_match:
@@ -165,7 +173,11 @@ def _recommendation_source(rule_match: bool, ml_match: bool) -> str:
 
 
 def _dim_if_needed(text: str, dim: bool) -> str:
-    """Dim panel text when it is not the recommended option."""
+    """Dim panel text when it is not the recommended option.
+
+    Returns:
+        Text wrapped in Rich dim markup if dim is True, otherwise unchanged.
+    """
     if dim:
         return f"[dim]{text}[/dim]"
     return text
@@ -464,7 +476,11 @@ class ReviewApp(App):
 
 
 def _run_script_stage(name: str, script_path: Path, argv: list[str]) -> int:
-    """Run one script stage with logging."""
+    """Run one script stage with logging.
+
+    Returns:
+        Exit code returned by the script.
+    """
     command = " ".join([sys.executable, str(script_path), *argv])
     console.print(f"\n[cyan]{name}[/cyan]")
     console.print(f"[dim]$ {command}[/dim]")
@@ -472,7 +488,14 @@ def _run_script_stage(name: str, script_path: Path, argv: list[str]) -> int:
 
 
 def _resolve_procedure_column(df: pd.DataFrame) -> str:
-    """Return the procedure text column name."""
+    """Return the procedure text column name.
+
+    Returns:
+        Name of the procedure text column found in the DataFrame.
+
+    Raises:
+        ValueError: If neither expected procedure column is present.
+    """
     if "AIMS_Actual_Procedure_Text" in df.columns:
         return "AIMS_Actual_Procedure_Text"
     if "procedure" in df.columns:
@@ -537,7 +560,11 @@ def _load_review_cases(
     model_path: Path,
     config: ReviewConfig,
 ) -> list[ReviewCase]:
-    """Load and rank review cases according to configured filters."""
+    """Load and rank review cases according to configured filters.
+
+    Returns:
+        List of ReviewCase objects sorted by disagreement then confidence.
+    """
     predictor = MLPredictor.load(model_path)
     df = pd.read_csv(data_path)
     procedure_col = _resolve_procedure_column(df)
@@ -568,7 +595,11 @@ def _load_review_cases(
 
 
 def _load_review_progress(progress_path: Path) -> dict[str, Any]:
-    """Load persisted review progress payload."""
+    """Load persisted review progress payload.
+
+    Returns:
+        Parsed progress dict, or an empty dict if the file does not exist.
+    """
     if not progress_path.exists():
         return {}
     with progress_path.open(encoding="utf-8") as file_handle:
@@ -589,7 +620,12 @@ def _save_review_progress(runtime: ReviewRuntime) -> None:
 
 
 def _load_reviewed_indices(paths: ReviewPaths, resume: bool) -> set[int]:
-    """Load previously reviewed indices when resume mode is enabled."""
+    """Load previously reviewed indices when resume mode is enabled.
+
+    Returns:
+        Set of previously reviewed case indices, or empty set if resume is
+        False or no matching progress file exists.
+    """
     if not resume:
         return set()
 
@@ -621,7 +657,11 @@ def _save_review_labels(
 
 
 def _build_action_table(recommended: str) -> Table:
-    """Build compact key/action legend for classic mode."""
+    """Build compact key/action legend for classic mode.
+
+    Returns:
+        Rich Table mapping keys to their review actions.
+    """
     table = Table(show_header=True, box=None, pad_edge=False)
     table.add_column("Key", style="bold yellow", no_wrap=True)
     table.add_column("Action")
@@ -636,7 +676,11 @@ def _build_action_table(recommended: str) -> Table:
 
 
 def _build_categories_table() -> Table:
-    """Build numbered category lookup table for classic mode."""
+    """Build numbered category lookup table for classic mode.
+
+    Returns:
+        Rich Table of numbered category entries.
+    """
     table = Table(show_header=True, box=None, pad_edge=False)
     table.add_column("#", style="bold cyan", justify="right", no_wrap=True)
     table.add_column("Category")
@@ -656,7 +700,12 @@ def _recommended_category(case: ReviewCase) -> str:
 
 
 def _label_record(case: ReviewCase, selected: str) -> dict[str, Any]:
-    """Create normalized label record for review output."""
+    """Create normalized label record for review output.
+
+    Returns:
+        Dict with procedure, human_category, rule_category, ml_category,
+        confidence, notes, and source_case_id fields.
+    """
     return {
         "procedure": case.procedure,
         "human_category": normalize_category_label(selected),
@@ -671,7 +720,11 @@ def _label_record(case: ReviewCase, selected: str) -> dict[str, Any]:
 def _resolve_selected_category(
     choice: str, case: ReviewCase, recommended: str
 ) -> str | None:
-    """Map user choice to final category."""
+    """Map user choice to final category.
+
+    Returns:
+        Selected category string, or None if the choice is unrecognized.
+    """
     other_category = "Other (procedure cat)"
     selected: str | None = None
 
@@ -806,7 +859,11 @@ def _run_review_classic(
     queue: list[ReviewCase],
     runtime: ReviewRuntime,
 ) -> ReviewSessionMetrics:
-    """Run classic prompt-based review mode."""
+    """Run classic prompt-based review mode.
+
+    Returns:
+        ReviewSessionMetrics with counts of reviewed, accepted, and skipped cases.
+    """
     console.print(
         Panel.fit(
             "[bold cyan]Streamlined Review (Classic)[/bold cyan]\n"
@@ -847,7 +904,14 @@ def _run_tui_review_session(
     queue: list[ReviewCase],
     runtime: ReviewRuntime,
 ) -> ReviewSessionMetrics:
-    """Run full-screen review TUI using Textual."""
+    """Run full-screen review TUI using Textual.
+
+    Returns:
+        ReviewSessionMetrics collected during the TUI session.
+
+    Raises:
+        RuntimeError: If Textual is not installed.
+    """
     if not TEXTUAL_AVAILABLE:
         raise RuntimeError(
             "Textual is required for TUI mode. Install dependencies with "
@@ -875,7 +939,12 @@ def _print_review_summary(metrics: ReviewSessionMetrics, output_path: Path) -> N
 
 
 def _resolve_default_review_data_path() -> Path:
-    """Prefer remaining unseen pool; fall back to original unseen split."""
+    """Prefer remaining unseen pool; fall back to original unseen split.
+
+    Returns:
+        Path to the remaining eval data if it exists, otherwise the original
+        unseen eval split path.
+    """
     remaining = DEFAULT_REMAINING_EVAL_DATA.resolve()
     if remaining.exists():
         return remaining
@@ -985,7 +1054,11 @@ def _run_review_interface(
 
 
 def _review_command(args: argparse.Namespace) -> int:
-    """Run streamlined interactive correction workflow."""
+    """Run streamlined interactive correction workflow.
+
+    Returns:
+        0 on success or when the queue is empty, 1 if required paths are invalid.
+    """
     runtime = _build_review_runtime(args)
     if runtime is None:
         return 1
@@ -1003,14 +1076,25 @@ def _review_command(args: argparse.Namespace) -> int:
 
 
 def _normalize_procedure_key(value: Any) -> str:
-    """Build stable lookup key for joining procedure rows across files."""
+    """Build stable lookup key for joining procedure rows across files.
+
+    Returns:
+        Uppercased, whitespace-normalized string, or empty string for None.
+    """
     if value is None:
         return ""
     return " ".join(str(value).strip().split()).upper()
 
 
 def _load_override_map(review_labels_path: Path) -> dict[str, str]:
-    """Load latest human override per normalized procedure text."""
+    """Load latest human override per normalized procedure text.
+
+    Returns:
+        Dict mapping normalized procedure key to canonical human category string.
+
+    Raises:
+        ValueError: If the review labels file is missing required columns.
+    """
     review_df = pd.read_csv(review_labels_path)
     required = {"procedure", "human_category"}
     missing = required.difference(review_df.columns)
@@ -1035,7 +1119,12 @@ def _load_override_map(review_labels_path: Path) -> dict[str, str]:
 
 
 def _upsert_label_column(df: pd.DataFrame, label_column: str) -> pd.DataFrame:
-    """Ensure label column exists and normalized."""
+    """Ensure label column exists and normalized.
+
+    Returns:
+        Copy of df with label_column present and values normalized to canonical
+        category strings.
+    """
     out = df.copy()
     if label_column not in out.columns:
         out[label_column] = "Other (procedure cat)"
@@ -1092,7 +1181,12 @@ def _merge_override_frames(
     override_map: dict[str, str],
     label_column: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, int, int, int, int]:
-    """Merge retrain frames and upweight true correction overrides."""
+    """Merge retrain frames and upweight true correction overrides.
+
+    Returns:
+        Tuple of (retrain_df, remaining_eval_df, seen_overrides_applied,
+        unseen_promoted, corrected_rows, rows_added_by_weighting).
+    """
     seen_original_labels = seen_df[label_column].copy()
     seen_override_mask = seen_df["_procedure_key"].isin(override_map)
     seen_mapped_labels = seen_df.loc[seen_override_mask, "_procedure_key"].map(
@@ -1138,7 +1232,15 @@ def _merge_override_frames(
 
 
 def _prepare_override_retrain_datasets(args: argparse.Namespace) -> RetrainMergeSummary:
-    """Create retrain/eval datasets that incorporate human review overrides."""
+    """Create retrain/eval datasets that incorporate human review overrides.
+
+    Returns:
+        RetrainMergeSummary with counts of overrides applied and rows written.
+
+    Raises:
+        RuntimeError: If required input files are missing, output files already
+            exist without --force, or the override map is empty.
+    """
     paths = _build_retrain_paths(args)
     _validate_retrain_paths(paths, force=args.force)
 
@@ -1218,7 +1320,12 @@ def _print_retrain_merge_summary(
 
 
 def _retrain_command(args: argparse.Namespace) -> int:
-    """Retrain model after applying human review overrides."""
+    """Retrain model after applying human review overrides.
+
+    Returns:
+        0 on success, 1 if dataset preparation fails, or the training script
+        exit code if training fails.
+    """
     try:
         summary = _prepare_override_retrain_datasets(args)
     except (RuntimeError, ValueError) as exc:
@@ -1296,14 +1403,22 @@ def _auto_train_argv(args: argparse.Namespace) -> list[str]:
 
 
 def _train_command(args: argparse.Namespace) -> int:
-    """Run deterministic training pipeline."""
+    """Run deterministic training pipeline.
+
+    Returns:
+        Exit code from the auto_train.py script.
+    """
     script_path = PROJECT_ROOT / "ml_training" / "auto_train.py"
     argv = _auto_train_argv(args)
     return _run_script_stage("Training", script_path, argv)
 
 
 def _evaluate_command(args: argparse.Namespace) -> int:
-    """Run standalone evaluation command."""
+    """Run standalone evaluation command.
+
+    Returns:
+        Exit code from the evaluate.py script.
+    """
     data_path = _resolve_optional_data_path(args.data)
     if args.data is None:
         console.print(f"[cyan]Using default evaluation data:[/cyan] {data_path}")
@@ -1339,7 +1454,11 @@ def _print_next_review_step(model_path: Path, data_path: Path) -> None:
 
 
 def _run_command_chain(args: argparse.Namespace) -> int:
-    """Run train -> evaluate in one command and suggest next review step."""
+    """Run train -> evaluate in one command and suggest next review step.
+
+    Returns:
+        0 on success, or the first non-zero exit code from training or evaluation.
+    """
     train_args = argparse.Namespace(**vars(args))
     train_args.skip_evaluate = True
 
@@ -1591,7 +1710,12 @@ def _configure_retrain_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser."""
+    """Build CLI parser.
+
+    Returns:
+        Configured ArgumentParser with train, evaluate, review, run, and
+        retrain subcommands.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Unified ML workbench with streamlined train/evaluate/review flows."
@@ -1611,7 +1735,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Main entrypoint."""
+    """Main entrypoint.
+
+    Returns:
+        0 on success, 1 if an unknown command is dispatched.
+    """
     parser = build_parser()
 
     console.print(
