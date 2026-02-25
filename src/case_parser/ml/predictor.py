@@ -12,22 +12,54 @@ class ProcedureMLPipeline:
     """Inference pipeline that combines feature extraction and estimator."""
 
     def __init__(self, model: Any, features: Any):
+        """Initialize the pipeline with a fitted estimator and feature extractor.
+
+        Args:
+            model: Fitted sklearn-compatible estimator with predict and
+                predict_proba methods.
+            features: Fitted feature transformer with a transform method.
+        """
         self.model = model
         self.features = features
         self.classes_ = getattr(model, "classes_", [])
 
     @staticmethod
     def _coerce_inputs(procedures: Iterable[str] | str) -> list[str]:
+        """Normalize procedure input to a list of strings.
+
+        Args:
+            procedures: Either a single procedure string or an iterable of
+                procedure strings.
+
+        Returns:
+            List of procedure strings suitable for feature transformation.
+        """
         if isinstance(procedures, str):
             return [procedures]
         return [str(proc) for proc in procedures]
 
     def predict(self, procedures: Iterable[str] | str) -> Any:
+        """Predict categories for one or more procedure texts.
+
+        Args:
+            procedures: Single procedure string or iterable of strings.
+
+        Returns:
+            Array of predicted category labels, one per input procedure.
+        """
         texts = self._coerce_inputs(procedures)
         feature_matrix = self.features.transform(texts)
         return self.model.predict(feature_matrix)
 
     def predict_proba(self, procedures: Iterable[str] | str) -> Any:
+        """Return class probability estimates for one or more procedure texts.
+
+        Args:
+            procedures: Single procedure string or iterable of strings.
+
+        Returns:
+            2-D array of shape (n_samples, n_classes) with class probabilities.
+        """
         texts = self._coerce_inputs(procedures)
         feature_matrix = self.features.transform(texts)
         return self.model.predict_proba(feature_matrix)
@@ -58,6 +90,8 @@ class MLPredictor:
 
         Raises:
             FileNotFoundError: If model file doesn't exist
+            ValueError: If the pickle artifact is missing the expected
+                ``pipeline`` key.
         """
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {model_path}")

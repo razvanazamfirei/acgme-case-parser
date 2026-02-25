@@ -31,7 +31,11 @@ console = Console()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Build command line argument parser."""
+    """Build command line argument parser.
+
+    Returns:
+        Configured ArgumentParser with all supported flags and column overrides.
+    """
     parser = argparse.ArgumentParser(
         description="Convert anesthesia Excel file to case log format.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -105,7 +109,14 @@ Examples:
 
 
 def columns_from_args(args: argparse.Namespace) -> ColumnMap:
-    """Create ColumnMap from command line arguments, applying any --col-* overrides."""
+    """Create ColumnMap from command line arguments, applying any --col-* overrides.
+
+    Args:
+        args: Parsed argument namespace containing optional col_* attributes.
+
+    Returns:
+        ColumnMap with default values overridden by any provided --col-* flags.
+    """
     base = ColumnMap()
     kwargs = {}
     for field_name in ColumnMap.__dataclass_fields__:
@@ -116,7 +127,16 @@ def columns_from_args(args: argparse.Namespace) -> ColumnMap:
 
 
 def validate_arguments(args: argparse.Namespace) -> None:
-    """Validate command line arguments, raising on any invalid combination."""
+    """Validate command line arguments, raising on any invalid combination.
+
+    Args:
+        args: Parsed argument namespace to validate.
+
+    Raises:
+        FileNotFoundError: If the input path does not exist.
+        ValueError: If the input/output formats are unsupported, no Excel files
+            are found in a directory, or the year is out of range.
+    """
     input_path = Path(args.input_file)
     output_path = Path(args.output_file)
 
@@ -148,7 +168,14 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
 
 def find_excel_files(directory: Path) -> list[Path]:
-    """Return all .xlsx and .xls files in directory, sorted by name."""
+    """Return all .xlsx and .xls files in directory, sorted by name.
+
+    Args:
+        directory: Directory to search for Excel files.
+
+    Returns:
+        Sorted list of matching file paths sorted alphabetically (.xlsx before .xls).
+    """
     return sorted(directory.glob("*.xlsx")) + sorted(directory.glob("*.xls"))
 
 
@@ -159,7 +186,13 @@ def process_single_excel_file(
 ) -> list[ParsedCase]:
     """Read and process a single Excel file.
 
-    Returns an empty list if the file is empty.
+    Args:
+        file_path: Path to the Excel file to process.
+        processor: Initialized CaseProcessor to use for parsing.
+        sheet_name: Sheet name or index to read; uses the first sheet if None.
+
+    Returns:
+        List of ParsedCase objects. Empty if the file contains no data rows.
     """
     console.print(f"[cyan]Processing:[/cyan] {file_path.name}")
 
@@ -183,7 +216,16 @@ def process_excel_directory(
     processor: CaseProcessor,
     sheet_name: str | int | None,
 ) -> list[ParsedCase]:
-    """Process all Excel files in a directory."""
+    """Process all Excel files in a directory.
+
+    Args:
+        directory: Directory containing Excel files to process.
+        processor: Initialized CaseProcessor to use for parsing.
+        sheet_name: Sheet name or index to read from each file.
+
+    Returns:
+        Combined list of ParsedCase objects from all files in the directory.
+    """
     excel_files = find_excel_files(directory)
     console.print(
         f"\n[bold cyan]Found {len(excel_files)} Excel file(s) "
@@ -207,7 +249,18 @@ def process_excel(
     default_year: int,
     sheet_name: str | int | None,
 ) -> tuple[list[ParsedCase], DataFrame]:
-    """Dispatch Excel processing for a single file or a directory."""
+    """Dispatch Excel processing for a single file or a directory.
+
+    Args:
+        input_path: Path to an Excel file or directory of Excel files.
+        columns: Column mapping configuration.
+        default_year: Fallback year used when a date cannot be parsed.
+        sheet_name: Sheet name or index to read; uses the first sheet if None.
+
+    Returns:
+        Tuple of (cases, output_df) where cases is the list of ParsedCase objects
+        and output_df is the corresponding output-formatted DataFrame.
+    """
     processor = CaseProcessor(columns, default_year)
 
     if input_path.is_file():
@@ -228,7 +281,19 @@ def process_csv(
 ) -> tuple[list[ParsedCase], DataFrame]:
     """Process a CSV v2 directory (MPOG supervised export).
 
-    Returns (cases, output_df).
+    Reads matched CaseList/ProcedureList CSV pairs, processes all cases, and
+    writes a separate standalone file for any orphan procedures found.
+
+    Args:
+        input_path: Directory containing CSV v2 file pairs.
+        output_path: Desired path for the primary output Excel file (used to
+            derive the standalone procedures filename).
+        columns: Column mapping configuration.
+        default_year: Fallback year used when a date cannot be parsed.
+        excel_handler: ExcelHandler instance used to write standalone output.
+
+    Returns:
+        Tuple of (cases, output_df) for the main (non-orphan) cases.
     """
     console.print(
         Panel(
@@ -262,7 +327,16 @@ def process_csv(
 
 
 def save_validation_report(cases: list[ParsedCase], report_path: Path) -> None:
-    """Generate and save a validation report, then print its summary."""
+    """Generate and save a validation report, then print its summary.
+
+    The output format is inferred from the file extension: .json produces a JSON
+    report, .xlsx/.xls produces an Excel report, and anything else produces a
+    plain-text report.
+
+    Args:
+        cases: List of parsed cases to validate.
+        report_path: File path where the report will be written.
+    """
     suffix = report_path.suffix.lower()
     if suffix == ".json":
         format_type = "json"
@@ -280,7 +354,11 @@ def save_validation_report(cases: list[ParsedCase], report_path: Path) -> None:
 
 
 def print_validation_summary(summary: dict[str, Any]) -> None:
-    """Print a validation summary as a rich table."""
+    """Print a validation summary as a rich table.
+
+    Args:
+        summary: Summary dict as returned by ValidationReport.get_summary().
+    """
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="cyan", no_wrap=True)
     table.add_column(style="white")
@@ -303,7 +381,15 @@ def print_validation_summary(summary: dict[str, Any]) -> None:
 
 
 def get_output_summary(df: pd.DataFrame) -> dict[str, Any]:
-    """Return aggregate stats for the output DataFrame for terminal display."""
+    """Return aggregate stats for the output DataFrame for terminal display.
+
+    Args:
+        df: Output DataFrame produced by CaseProcessor.cases_to_dataframe().
+
+    Returns:
+        Dict with keys: total_cases, date_range, columns, empty_cases,
+        missing_dates. Falls back to a minimal dict on any error.
+    """
     try:
         dates = pd.to_datetime(df["Case Date"], format="%m/%d/%Y", errors="coerce")
         date_range = "Unavailable"
@@ -327,7 +413,12 @@ def get_output_summary(df: pd.DataFrame) -> dict[str, Any]:
 
 
 def print_summary(output_file: Path, summary: dict[str, Any]) -> None:
-    """Print the final output summary panel."""
+    """Print the final output summary panel.
+
+    Args:
+        output_file: Path to the written output file (displayed in the panel).
+        summary: Summary dict as returned by get_output_summary().
+    """
     console.print()
     console.print(Panel("[bold]Output Summary[/bold]", border_style="green"))
 
@@ -350,7 +441,13 @@ def print_summary(output_file: Path, summary: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    """Main entry point."""
+    """Main entry point for the case-parser CLI.
+
+    Parses arguments, validates inputs, dispatches to the appropriate processing
+    path (Excel or CSV v2), optionally writes a validation report, writes the
+    output Excel file, and prints a summary. Exits with a non-zero status code
+    on any error.
+    """
     parser = build_arg_parser()
     args = parser.parse_args()
     setup_logging(level=args.log_level, verbose=args.verbose)

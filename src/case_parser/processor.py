@@ -63,11 +63,15 @@ class CaseProcessor:
             self.classifier = HybridClassifier(ml_predictor=None)
 
     def parse_date(self, value: Any) -> tuple[datetime, list[str]]:
-        """
-        Parse date with fallback to default year.
+        """Parse date with fallback to default year.
+
+        Args:
+            value: Raw date value from the input row; may be NaN, a string,
+                or a pandas Timestamp.
 
         Returns:
-            Tuple of (parsed_datetime, warnings_list)
+            Tuple of (parsed_datetime, warnings_list) where parsed_datetime is
+            timezone-aware and warnings_list is empty on success.
         """
         warnings = []
 
@@ -101,11 +105,15 @@ class CaseProcessor:
 
     @staticmethod
     def determine_age_category(age: Any) -> tuple[AgeCategory | None, list[str]]:
-        """
-        Categorize age using structured age ranges.
+        """Categorize age using structured age ranges.
+
+        Args:
+            age: Raw age value; expected to be numeric (years) or coercible to
+                float. None or NaN values produce a warning and return None.
 
         Returns:
-            Tuple of (age_category, warnings_list)
+            Tuple of (age_category, warnings_list) where age_category is None
+            when the value is missing or invalid.
         """
         warnings = []
 
@@ -142,11 +150,15 @@ class CaseProcessor:
     def map_anesthesia_type(
         anesthesia_input: Any,
     ) -> tuple[AnesthesiaType | None, list[str]]:
-        """
-        Map anesthesia description to standardized type.
+        """Map anesthesia description to standardized type.
+
+        Args:
+            anesthesia_input: Raw anesthesia type value from the input row;
+                matched case-insensitively against ANESTHESIA_MAPPING keywords.
 
         Returns:
-            Tuple of (anesthesia_type, warnings_list)
+            Tuple of (anesthesia_type, warnings_list) where anesthesia_type is
+            None when the value is missing or unrecognized.
         """
         warnings = []
 
@@ -184,20 +196,31 @@ class CaseProcessor:
     def determine_procedure_category(
         procedure: Any, services: list[str]
     ) -> tuple[ProcedureCategory, list[str]]:
-        """
-        Determine procedure category based on services and procedure text.
+        """Determine procedure category based on services and procedure text.
 
         The actual categorization logic is delegated to patterns/categorization.py
         for better maintainability and clarity.
 
+        Args:
+            procedure: Procedure description text (may be None or NaN).
+            services: List of service strings from the input row.
+
         Returns:
-            Tuple of (procedure_category, warnings_list)
+            Tuple of (procedure_category, warnings_list).
         """
         return categorize_procedure(procedure, services)
 
     @staticmethod
     def normalize_emergent_flag(value: Any) -> bool:
-        """Convert various emergent flag formats to boolean."""
+        """Convert various emergent flag formats to boolean.
+
+        Args:
+            value: Raw emergent column value; accepts "E", "Y", "YES", "TRUE",
+                "1" (case-insensitive) as truthy. NaN and empty values are False.
+
+        Returns:
+            True if the value indicates an emergency case, False otherwise.
+        """
         if pd.isna(value):
             return False
         return str(value).strip().upper() in {"E", "Y", "YES", "TRUE", "1"}
@@ -209,7 +232,19 @@ class CaseProcessor:
         procedure_text: Any,
         procedure_category: ProcedureCategory,
     ) -> tuple[AnesthesiaType | None, list[str]]:
-        """Infer anesthesia type from context clues when not directly mapped."""
+        """Infer anesthesia type from context clues when not directly mapped.
+
+        Args:
+            anesthesia_type: Already-mapped type; returned unchanged if not None.
+            airway_mgmt: List of AirwayManagement findings from extraction.
+            procedure_text: Raw procedure description used for MAC keyword checks.
+            procedure_category: Categorized procedure type used to suppress
+                defaulting for obstetric cases.
+
+        Returns:
+            Tuple of (anesthesia_type, warnings_list) with the inferred type
+            and any explanatory warning messages.
+        """
         if anesthesia_type is not None:
             return anesthesia_type, []
 
@@ -246,7 +281,19 @@ class CaseProcessor:
     def _calculate_confidence(
         confidence_scores: list[float], notes: Any
     ) -> tuple[float, list[str]]:
-        """Calculate overall extraction confidence from per-finding scores."""
+        """Calculate overall extraction confidence from per-finding scores.
+
+        Args:
+            confidence_scores: List of individual confidence values from
+                airway, vascular, and monitoring extraction findings.
+            notes: Raw procedure notes field; used to distinguish "no notes"
+                (score 0.7) from "notes present but no findings" (score 0.9).
+
+        Returns:
+            Tuple of (confidence_score, warnings_list) where confidence_score
+            is the mean of per-finding scores, or a fallback value when no
+            findings were recorded.
+        """
         if confidence_scores:
             return sum(confidence_scores) / len(confidence_scores), []
         if pd.isna(notes) or not str(notes).strip():
@@ -254,11 +301,15 @@ class CaseProcessor:
         return 0.9, []
 
     def process_row(self, row: pd.Series) -> ParsedCase:  # noqa: PLR0914
-        """
-        Process a single row into typed ParsedCase.
+        """Process a single row into a typed ParsedCase.
+
+        Args:
+            row: A single row from the input DataFrame, accessed by column
+                names defined in self.column_map.
 
         Returns:
-            ParsedCase with all extracted and categorized data
+            ParsedCase with all extracted and categorized data, including
+            warnings and a confidence score.
         """
         all_warnings = []
         all_findings = []
@@ -385,6 +436,15 @@ class CaseProcessor:
         )
 
     def _process_row_safe(self, idx: Any, row: pd.Series) -> ParsedCase:
+        """Process a single row, returning an error case on failure.
+
+        Args:
+            idx: Row index used in the error log message.
+            row: A single row from the input DataFrame.
+
+        Returns:
+            ParsedCase on success, or a minimal error case if processing raises.
+        """
         try:
             return self.process_row(row)
         except Exception as e:
@@ -406,11 +466,17 @@ class CaseProcessor:
             )
 
     def process_dataframe(self, df: pd.DataFrame, workers: int = 1) -> list[ParsedCase]:
-        """
-        Transform input dataframe to list of ParsedCase objects.
+        """Transform input DataFrame to a list of ParsedCase objects.
+
+        Args:
+            df: Input DataFrame with columns matching self.column_map.
+                Missing columns are warned about but do not halt processing.
+            workers: Number of threads for parallel row processing. Defaults
+                to 1 (sequential). Values > 1 use ThreadPoolExecutor.
 
         Returns:
-            List of ParsedCase objects
+            List of ParsedCase objects, one per row. Rows that raise an
+            exception produce a minimal error case rather than stopping the run.
         """
         logger.info("Processing %d rows of data", len(df))
         if workers < 1:
@@ -449,7 +515,14 @@ class CaseProcessor:
 
     @staticmethod
     def cases_to_dataframe(cases: list[ParsedCase]) -> pd.DataFrame:
-        """Convert list of ParsedCase objects to output DataFrame."""
+        """Convert a list of ParsedCase objects to an output DataFrame.
+
+        Args:
+            cases: ParsedCase objects to serialize.
+
+        Returns:
+            DataFrame with columns defined by OUTPUT_COLUMNS, one row per case.
+        """
         output_rows = [case.to_output_dict() for case in cases]
         df = pd.DataFrame(output_rows)
         return df[OUTPUT_COLUMNS]

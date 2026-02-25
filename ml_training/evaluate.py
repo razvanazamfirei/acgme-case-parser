@@ -68,7 +68,14 @@ def _bin_confidence(score: float, bins: dict[str, int]) -> None:
 
 
 def evaluate_model(model_path: Path, data_path: Path) -> EvaluationSummary:
-    """Evaluate model on a CSV file and return aggregate metrics."""
+    """Evaluate model on a CSV file and return aggregate metrics.
+
+    Args:
+        model_path: Path to the trained model file to load for evaluation.
+        data_path: Path to the CSV file containing procedures to evaluate.
+    Returns:
+        EvaluationSummary with confidence distribution and disagreement cases.
+    """
     predictor = MLPredictor.load(model_path)
     df = pd.read_csv(data_path)
     procedure_col = _resolve_procedure_column(df)
@@ -158,7 +165,11 @@ def _save_disagreements(disagreement_cases: list[dict[str, Any]]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser."""
+    """Build CLI parser.
+
+    Returns:
+        Configured ArgumentParser for the evaluation tool.
+    """
     parser = argparse.ArgumentParser(description="Evaluate ML model on unlabeled data")
     parser.add_argument("model", type=Path, help="Path to model file")
     parser.add_argument("data", type=Path, help="Path to input CSV")
@@ -166,7 +177,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Main entry point."""
+    """Main entry point.
+
+    Returns:
+        0 on success, 1 if the model or data file is not found.
+    """
     args = build_parser().parse_args()
 
     if not args.model.exists():

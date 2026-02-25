@@ -60,7 +60,15 @@ class PipelineError(RuntimeError):
 
 
 def run_stage(name: str, command: str, action: Callable[[], int]) -> StageResult:
-    """Run one stage and return a normalized result."""
+    """Run one stage and return a normalized result.
+
+    Args:
+        name: Human-readable name of the pipeline stage.
+        command: Command string to display when running the stage.
+        action: Callable that runs the stage and returns an integer exit code.
+    Returns:
+        StageResult with name, success flag, and command string.
+    """
     console.print(f"\n[cyan]{name}[/cyan]")
     console.print(f"[dim]$ {command}[/dim]")
     exit_code = action()
@@ -75,7 +83,18 @@ def validate_model_artifact(model_path: Path) -> None:
 
 
 def split_prepared_dataset(config: SplitConfig) -> tuple[int, int]:
-    """Split prepared data into seen (train) and unseen (holdout) sets."""
+    """Split prepared data into seen (train) and unseen (holdout) sets.
+
+    Args:
+        config: Split configuration specifying paths, ratios, and the label column.
+
+    Returns:
+        Tuple of (seen_count, unseen_count) rows written to each split file.
+
+    Raises:
+        ValueError: If unseen_ratio is not between 0 and 1, or if the label
+            column is not found in the prepared dataset.
+    """
     if not 0.0 < config.unseen_ratio < 1.0:
         raise ValueError(
             f"unseen-ratio must be between 0 and 1, got {config.unseen_ratio}"
@@ -121,7 +140,11 @@ def split_prepared_dataset(config: SplitConfig) -> tuple[int, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser for auto-training pipeline."""
+    """Build CLI parser for auto-training pipeline.
+
+    Returns:
+        Configured ArgumentParser for the auto-training pipeline.
+    """
     parser = argparse.ArgumentParser(
         description="Run the full ML training pipeline with explicit stages."
     )
@@ -407,7 +430,11 @@ def _print_summary(results: list[StageResult], model_output: Path) -> None:
 
 
 def main() -> int:
-    """Run configured pipeline stages."""
+    """Run configured pipeline stages.
+
+    Returns:
+        0 on success, 1 if any pipeline stage fails.
+    """
     args = build_parser().parse_args()
     _print_header(args)
 

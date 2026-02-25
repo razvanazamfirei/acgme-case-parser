@@ -19,11 +19,22 @@ class ValidationReport:
     """Generate validation reports for parsed cases."""
 
     def __init__(self, cases: list[ParsedCase]):
-        """Initialize with list of parsed cases."""
+        """Initialize with list of parsed cases.
+
+        Args:
+            cases: Parsed cases to validate and report on.
+        """
         self.cases = cases
 
     def get_summary(self) -> dict[str, Any]:
-        """Get overall validation summary statistics."""
+        """Get overall validation summary statistics.
+
+        Returns:
+            Dict with keys: total_cases, cases_with_warnings,
+            low_confidence_cases, average_confidence, warning_types (dict of
+            warning message to count), and missing_fields (dict of field name
+            to count of cases missing that field).
+        """
         total_cases = len(self.cases)
         cases_with_warnings = sum(1 for case in self.cases if case.has_warnings())
         low_confidence_cases = sum(1 for case in self.cases if case.is_low_confidence())
@@ -98,7 +109,12 @@ class ValidationReport:
 
     @staticmethod
     def _print_summary_section(console: Console, summary: dict[str, Any]):
-        """Print summary section of validation report."""
+        """Print summary section of validation report.
+
+        Args:
+            console: Rich Console to write output to.
+            summary: Summary dict as returned by get_summary().
+        """
         total = summary["total_cases"]
         warnings_pct = summary["cases_with_warnings"] / total * 100 if total > 0 else 0
         low_conf_pct = summary["low_confidence_cases"] / total * 100 if total > 0 else 0
@@ -125,7 +141,13 @@ class ValidationReport:
     def _print_missing_fields_section(
         console: Console, summary: dict[str, Any], total: int
     ):
-        """Print missing fields section of validation report."""
+        """Print missing fields section of validation report.
+
+        Args:
+            console: Rich Console to write output to.
+            summary: Summary dict as returned by get_summary().
+            total: Total number of cases, used to compute percentages.
+        """
         if not any(summary["missing_fields"].values()):
             return
 
@@ -143,7 +165,13 @@ class ValidationReport:
 
     @staticmethod
     def _print_warning_types_section(console: Console, summary: dict[str, Any]):
-        """Print warning types section of validation report."""
+        """Print warning types section of validation report.
+
+        Args:
+            console: Rich Console to write output to.
+            summary: Summary dict as returned by get_summary(). The top 10
+                warning types by frequency are displayed.
+        """
         if not summary["warning_types"]:
             return
 
@@ -161,7 +189,13 @@ class ValidationReport:
         console.print()
 
     def _print_problematic_cases_section(self, console: Console):
-        """Print problematic cases section of validation report."""
+        """Print problematic cases section of validation report.
+
+        Args:
+            console: Rich Console to write output to. Up to 20 problematic
+                cases are printed; a count of remaining cases is shown if more
+                exist.
+        """
         problematic = self.get_problematic_cases()
         if not problematic:
             return
@@ -185,7 +219,12 @@ class ValidationReport:
         console.print()
 
     def generate_text_report(self) -> str:
-        """Generate human-readable text report."""
+        """Generate human-readable text report.
+
+        Returns:
+            Multi-line string containing the full validation report rendered
+            with Rich formatting stripped to plain text.
+        """
         console = Console(
             file=None, width=100, force_terminal=False, legacy_windows=False
         )
@@ -221,7 +260,13 @@ class ValidationReport:
         return capture.get()
 
     def generate_json_report(self) -> dict[str, Any]:
-        """Generate machine-readable JSON report."""
+        """Generate machine-readable JSON report.
+
+        Returns:
+            Dict with keys: summary (from get_summary()), problematic_cases
+            (validation summaries for flagged cases), and extraction_details
+            (extraction performance statistics).
+        """
         summary = self.get_summary()
         problematic = self.get_problematic_cases()
 
@@ -234,7 +279,13 @@ class ValidationReport:
         }
 
     def _get_extraction_statistics(self) -> dict[str, Any]:
-        """Get statistics about extraction performance."""
+        """Get statistics about extraction performance.
+
+        Returns:
+            Dict with counts of cases with each extraction type, per-type
+            value breakdowns, and extraction rates (as fractions of total cases)
+            for airway, vascular, and monitoring.
+        """
         total_cases = len(self.cases)
 
         # Count extraction types
@@ -280,7 +331,13 @@ class ValidationReport:
         }
 
     def to_dataframe(self) -> pd.DataFrame:
-        """Convert validation summary to DataFrame for Excel export."""
+        """Convert validation summary to DataFrame for Excel export.
+
+        Returns:
+            DataFrame with one row per case containing Case ID, warning
+            flags and counts, confidence score, low-confidence flag, and
+            a semicolon-separated list of missing critical fields.
+        """
         rows = []
         for case in self.cases:
             summary = case.get_validation_summary()
@@ -304,6 +361,9 @@ class ValidationReport:
         Args:
             output_path: Path to save report
             output_format: 'text', 'json', or 'excel'
+
+        Raises:
+            ValueError: If output_format is not one of the supported values.
         """
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

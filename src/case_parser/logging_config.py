@@ -10,7 +10,17 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 def setup_logging(level: LogLevel = "INFO", verbose: bool = False) -> None:
-    """Set up logging configuration for the application."""
+    """Set up logging configuration for the application.
+
+    Configures the root logger with a timestamped console handler. When
+    verbose is True, DEBUG level overrides the level argument. openpyxl and
+    pandas loggers are always capped at WARNING to reduce noise.
+
+    Args:
+        level: Desired log level string ("DEBUG", "INFO", "WARNING", "ERROR",
+            or "CRITICAL"). Ignored when verbose is True.
+        verbose: If True, forces DEBUG level regardless of the level argument.
+    """
     log_level = logging.DEBUG if verbose else getattr(logging, level.upper())
 
     # Create formatter

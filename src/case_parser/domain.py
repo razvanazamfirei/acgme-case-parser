@@ -146,7 +146,14 @@ class ParsedCase(BaseModel):
     @field_validator("services", mode="before")
     @classmethod
     def split_services(cls, v: str | list[str] | None) -> list[str]:
-        """Split newline-separated services into list."""
+        """Split newline-separated services into list.
+
+        Args:
+            v: The raw value from the input, which can be a string, list, or None.
+
+        Returns:
+            A list of service strings, split on newlines if the input is a string.
+        """
         if v is None:
             return []
         if isinstance(v, list):
@@ -157,7 +164,16 @@ class ParsedCase(BaseModel):
         return []
 
     def to_output_dict(self) -> dict[str, str]:
-        """Convert to Excel output format matching expected columns."""
+        """Convert this case to an output dictionary for DataFrame assembly.
+
+        Enum values are serialized to their string representations. Multi-value
+        fields (airway management, vascular access, monitoring) are joined with
+        "; ". Absent optional fields are returned as empty strings.
+
+        Returns:
+            Dictionary keyed by output column names, with empty strings for
+            absent fields.
+        """
         return {
             "Case ID": self.episode_id or "",
             "Case Date": self.case_date.strftime("%m/%d/%Y"),
@@ -185,15 +201,32 @@ class ParsedCase(BaseModel):
         }
 
     def has_warnings(self) -> bool:
-        """Check if this case has any parsing warnings."""
+        """Return True if any parsing warnings were recorded for this case.
+
+        Returns:
+            True if parsing_warnings is non-empty, False otherwise.
+        """
         return len(self.parsing_warnings) > 0
 
     def is_low_confidence(self, threshold: float = 0.7) -> bool:
-        """Check if confidence is below threshold."""
+        """Return True if the overall confidence score falls below threshold.
+
+        Args:
+            threshold: Minimum acceptable confidence in the range 0.0-1.0.
+                Defaults to 0.7.
+
+        Returns:
+            True if confidence_score < threshold, False otherwise.
+        """
         return self.confidence_score < threshold
 
     def get_validation_summary(self) -> dict[str, Any]:
-        """Get summary of validation issues for reporting."""
+        """Return a summary dictionary of validation issues for reporting.
+
+        Returns:
+            Dictionary with keys: case_id, has_warnings, warning_count,
+            warnings, confidence_score, is_low_confidence, and missing_fields.
+        """
         return {
             "case_id": self.episode_id,
             "has_warnings": self.has_warnings(),
@@ -205,7 +238,12 @@ class ParsedCase(BaseModel):
         }
 
     def get_missing_critical_fields(self) -> list[str]:
-        """Identify critical fields that are missing or empty."""
+        """Identify critical fields that are missing or empty.
+
+        Returns:
+            List of field names (episode_id, responsible_provider, procedure,
+            age_category) that are None or empty for this case.
+        """
         missing = []
         if not self.episode_id:
             missing.append("episode_id")

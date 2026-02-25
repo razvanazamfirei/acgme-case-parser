@@ -54,7 +54,16 @@ class ProcessConfig:
 
 
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
-    """Find matching case/procedure file pairs."""
+    """Find matching case/procedure file pairs.
+
+    Args:
+        case_dir: Directory containing ``*.CaseList.csv`` files.
+        proc_dir: Directory containing ``*.ProcedureList.csv`` files.
+
+    Returns:
+        Sorted list of ``(name, case_path, proc_path)`` tuples for residents
+        that have both a CaseList and a ProcedureList file.
+    """
     case_files = {
         f.name.replace(".Supervised.CaseList.csv", ""): f
         for f in case_dir.glob("*.CaseList.csv")
@@ -68,7 +77,15 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
 
 
 def format_name(name: str) -> str:
-    """LAST_FIRST -> First Last."""
+    """Convert ``LAST_FIRST`` filename stem to ``First Last`` display name.
+
+    Args:
+        name: Filename stem in ``LAST_FIRST`` format (underscore-separated).
+
+    Returns:
+        Title-cased ``First Last`` string, or the original name title-cased
+        if no underscore separator is found.
+    """
     parts = name.split("_", 1)
     if len(parts) == 2:
         return f"{parts[1].title()} {parts[0].title()}"
@@ -82,11 +99,25 @@ def process_resident(
     orphan_notices: list[tuple[str, int, str]],
     orphan_notices_lock: threading.Lock,
 ) -> int:
+    """Process one resident's files and write output Excel.
+
+    Args:
+        pairs: Tuple of (name, case_file, proc_file) where name is the resident
+            identifier (``LAST_FIRST`` format), case_file is the path to the
+            CaseList CSV, and proc_file is the path to the ProcedureList CSV.
+        config: Shared processing configuration (output dir, column map, handlers).
+        processor: Configured ``CaseProcessor`` instance for transforming rows.
+        orphan_notices: Shared list to which orphan-file notices are appended.
+        orphan_notices_lock: Lock protecting concurrent access to orphan_notices.
+
+    Returns:
+        Number of cases written to the output Excel file, or 0 if there were
+        no joined cases to process.
+    """
     name: str
     case_file: Path
     proc_file: Path
     name, case_file, proc_file = pairs
-    """Process one resident's files and write output Excel. Returns case count."""
     case_df = pd.read_csv(case_file)
     proc_df = pd.read_csv(proc_file)
 

@@ -148,7 +148,22 @@ def categorize_obgyn(procedure_text: str) -> ProcedureCategory:
 def _match_services_to_categories(
     services: list[str], procedure_text: str
 ) -> list[ProcedureCategory]:
-    """Match services against procedure rules and return matched categories."""
+    """Match services against procedure rules and return matched categories.
+
+    Iterates over each service, checks it against PROCEDURE_RULES (first
+    matching rule wins per service), applies surgery-specific sub-categorization
+    via _apply_rule_category, and additionally checks each service for OB/GYN
+    keywords to run categorize_obgyn.
+
+    Args:
+        services: List of service strings from the input row (already stripped).
+        procedure_text: Uppercase procedure description used for sub-categorization
+            and exclude_keyword checks.
+
+    Returns:
+        Ordered list of unique ProcedureCategory values matched across all
+        services. An empty list means no service matched any rule.
+    """
     categories = []
     for service in services:
         service_upper = service.upper()
@@ -175,7 +190,19 @@ def _match_services_to_categories(
 
 
 def _fallback_categories_from_text(procedure_text: str) -> list[ProcedureCategory]:
-    """Infer categories directly from procedure text when services are empty."""
+    """Infer categories directly from procedure text when services are empty.
+
+    Scans PROCEDURE_RULES keywords against the uppercase procedure text and
+    returns the first matching category. If no rule matches, falls back to
+    categorize_obgyn; returns an empty list if that also yields OTHER.
+
+    Args:
+        procedure_text: Uppercase procedure description.
+
+    Returns:
+        List containing at most one ProcedureCategory, or an empty list when
+        no rule or OB/GYN keyword matches.
+    """
     for rule in PROCEDURE_RULES:
         if not any(keyword in procedure_text for keyword in rule.keywords):
             continue

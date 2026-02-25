@@ -36,7 +36,12 @@ class FeatureExtractor:
 
     @staticmethod
     def _get_medical_stopwords() -> list[str]:
-        """Get medical-specific stopwords."""
+        """Return medical-specific stopwords for TF-IDF vectorization.
+
+        Returns:
+            List of common medical terms that carry little discriminative
+            signal and are excluded from word-level TF-IDF features.
+        """
         return [
             "procedure",
             "patient",
@@ -69,6 +74,9 @@ class FeatureExtractor:
 
         Returns:
             Sparse feature matrix
+
+        Raises:
+            ValueError: If the extractor has not been fitted yet.
         """
         if not self._is_fitted:
             raise ValueError("FeatureExtractor must be fitted before transform")

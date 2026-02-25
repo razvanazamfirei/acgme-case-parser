@@ -30,7 +30,16 @@ console = Console()
 def process_single_file(
     file_path: Path, sample_size: int | None = None
 ) -> dict[str, Any]:
-    """Process a single CSV file and extract cases with rule-based categorization."""
+    """Process a single CSV file and extract cases with rule-based categorization.
+
+    Args:
+        file_path: Path to the CSV file to process.
+        sample_size: Optional maximum number of rows to sample from the file.
+
+    Returns:
+        Dict with keys "file", "total_rows", "valid_cases", and "cases" on
+        success, or "file" and "error" on failure.
+    """
     try:
         df = pd.read_csv(file_path)
         if sample_size and len(df) > sample_size:
@@ -68,7 +77,16 @@ def process_single_file(
 def smart_sample_cases(
     all_cases: list[dict[str, Any]], target_size: int
 ) -> list[dict[str, Any]]:
-    """Smart sampling to maximize training value."""
+    """Smart sampling to maximize training value.
+
+    Args:
+        all_cases: Full list of case dicts to sample from.
+        target_size: Maximum number of cases to include in the sample.
+
+    Returns:
+        Shuffled list of up to target_size cases, weighted toward high-value
+        and medium-value examples.
+    """
     high_value: list[dict[str, Any]] = []
     medium_value: list[dict[str, Any]] = []
     low_value: list[dict[str, Any]] = []
@@ -119,7 +137,11 @@ def smart_sample_cases(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser."""
+    """Build CLI parser.
+
+    Returns:
+        Configured ArgumentParser for the batch preparation tool.
+    """
     parser = argparse.ArgumentParser(
         description="Batch prepare training data from multiple case files"
     )
@@ -279,7 +301,11 @@ def _print_next_steps(output_path: Path) -> None:
 
 
 def main() -> int:
-    """Process all case files and prepare training dataset."""
+    """Process all case files and prepare training dataset.
+
+    Returns:
+        0 on success, 1 if no CSV files are found in the input directory.
+    """
     args = build_parser().parse_args()
     _print_header(args.input_dir, args.workers)
 
