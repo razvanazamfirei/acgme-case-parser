@@ -1,7 +1,7 @@
 exclude        = [".claude/"]
 indent-width   = 4
 line-length    = 88
-target-version = "py313"
+target-version = "py312"
 
 [lint]
   fixable = ["ALL"]
@@ -45,8 +45,6 @@ target-version = "py313"
       "PLC1901",
       "PLC2701",
       "PLC0415",
-      "PLR0913",
-      "PLR0917",
       "RUF059",
       "PLR6201",
       "ANN",

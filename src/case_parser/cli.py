@@ -20,7 +20,13 @@ if TYPE_CHECKING:
     from .domain import ParsedCase
 
 from .exceptions import CaseParserError
-from .io import CsvHandler, ExcelHandler, discover_csv_pairs, read_excel
+from .io import (
+    CsvHandler,
+    ExcelHandler,
+    ExcelWriteOptions,
+    discover_csv_pairs,
+    read_excel,
+)
 from .logging_config import setup_logging
 from .models import (
     FORMAT_TYPE_CASELOG,
@@ -321,9 +327,11 @@ def process_csv(
         standalone_path = output_path.with_stem(output_path.stem + "_standalone")
         excel_handler.write_excel(
             orphan_output_df,
-            str(standalone_path),
-            format_type=FORMAT_TYPE_STANDALONE,
-            version=STANDALONE_OUTPUT_FORMAT_VERSION,
+            standalone_path,
+            options=ExcelWriteOptions(
+                format_type=FORMAT_TYPE_STANDALONE,
+                version=STANDALONE_OUTPUT_FORMAT_VERSION,
+            ),
         )
         console.print(
             f"[cyan]Standalone procedures:[/cyan] {standalone_path} "
@@ -491,10 +499,12 @@ def main() -> None:
 
         excel_handler.write_excel(
             output_df,
-            str(output_path),
-            fixed_widths={"Original Procedure": 12},
-            format_type=FORMAT_TYPE_CASELOG,
-            version=OUTPUT_FORMAT_VERSION,
+            output_path,
+            options=ExcelWriteOptions(
+                fixed_widths={"Original Procedure": 12},
+                format_type=FORMAT_TYPE_CASELOG,
+                version=OUTPUT_FORMAT_VERSION,
+            ),
         )
         print_summary(output_path, get_output_summary(output_df))
 

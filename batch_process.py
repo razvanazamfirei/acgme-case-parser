@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "pandas>=3.0.1",
 #   "rich>=14.3.3",
@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -31,6 +32,7 @@ from rich.progress import (
 from src.case_parser.io import (
     CsvHandler,
     ExcelHandler,
+    ExcelWriteOptions,
     join_case_and_procedures,
 )
 from src.case_parser.models import (
@@ -129,9 +131,11 @@ def process_resident(
         )
         config.excel_handler.write_excel(
             processor.procedures_to_dataframe(orphan_cases),
-            str(config.output_dir / f"{formatted_name}_standalone.xlsx"),
-            format_type=FORMAT_TYPE_STANDALONE,
-            version=STANDALONE_OUTPUT_FORMAT_VERSION,
+            config.output_dir / f"{formatted_name}_standalone.xlsx",
+            options=ExcelWriteOptions(
+                format_type=FORMAT_TYPE_STANDALONE,
+                version=STANDALONE_OUTPUT_FORMAT_VERSION,
+            ),
         )
         orphan_notice = (name, len(orphans), f"{formatted_name}_standalone.xlsx")
 
@@ -147,15 +151,18 @@ def process_resident(
 
     config.excel_handler.write_excel(
         processor.cases_to_dataframe(parsed_cases),
-        str(config.output_dir / f"{formatted_name}.xlsx"),
-        fixed_widths={"Original Procedure": 12},
-        format_type=FORMAT_TYPE_CASELOG,
-        version=OUTPUT_FORMAT_VERSION,
+        config.output_dir / f"{formatted_name}.xlsx",
+        options=ExcelWriteOptions(
+            fixed_widths={"Original Procedure": 12},
+            format_type=FORMAT_TYPE_CASELOG,
+            version=OUTPUT_FORMAT_VERSION,
+        ),
     )
     return len(parsed_cases), orphan_notice
 
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
+    """Parse and validate command line arguments."""
     parser = argparse.ArgumentParser(description="Batch process resident case files")
     parser.add_argument(
         "--base-dir",
@@ -177,10 +184,13 @@ def main() -> None:
         help="Number of parallel workers for resident processing (default: 4)",
     )
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
+    return args
 
-    base_dir: Path = args.base_dir
-    output_dir: Path = args.output_dir
 
+def _validate_input_dirs(base_dir: Path) -> tuple[Path, Path]:
+    """Validate expected input folder structure and return subdirectories."""
     case_dir = base_dir / "case-list"
     proc_dir = base_dir / "procedure-list"
 
@@ -195,22 +205,20 @@ def main() -> None:
         )
         sys.exit(1)
 
-    output_dir.mkdir(exist_ok=True)
+    return case_dir, proc_dir
 
-    pairs = find_resident_pairs(case_dir, proc_dir)
-    if not pairs:
-        console.print("[yellow]Warning:[/yellow] No matching resident file pairs found")
-        sys.exit(0)
 
-    console.print(
-        f"Found [cyan]{len(pairs)}[/cyan] residents with both case and procedure files"
-    )
+def _sanitize_resident_id(resident_id: str) -> str:
+    """Return a non-sensitive resident identifier for logs and error output."""
+    return hashlib.sha256(resident_id.encode("utf-8")).hexdigest()[:8]
 
-    config = ProcessConfig(
-        output_dir=output_dir,
-        columns=ColumnMap(),
-        excel_handler=ExcelHandler(),
-    )
+
+def _process_in_parallel(
+    pairs: list[tuple[str, Path, Path]],
+    config: ProcessConfig,
+    workers: int,
+) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, str]]]:
+    """Run resident processing across worker processes."""
     total_cases = 0
     errors: list[tuple[str, str]] = []
     orphan_notices: list[tuple[str, int, str]] = []
@@ -228,7 +236,7 @@ def main() -> None:
 
         # Parallel: each worker process gets its own Python interpreter and GIL,
         # providing true CPU parallelism that threads cannot achieve.
-        with ProcessPoolExecutor(max_workers=args.workers) as executor:
+        with ProcessPoolExecutor(max_workers=workers) as executor:
             futures = {
                 executor.submit(process_resident, pair, config): pair[0]
                 for pair in pairs
@@ -240,12 +248,37 @@ def main() -> None:
                     total_cases += cases_written
                     if orphan_notice is not None:
                         orphan_notices.append(orphan_notice)
-                except Exception as e:
-                    logger.exception(
-                        "Failed processing resident %s: %s", resident_id, e
-                    )
-                    errors.append((resident_id, str(e)))
+                except Exception:
+                    sanitized_id = _sanitize_resident_id(resident_id)
+                    logger.error("Failed processing resident %s", sanitized_id)
+                    errors.append((sanitized_id, "processing_failed"))
                 progress.advance(task)
+    return total_cases, errors, orphan_notices
+
+
+def main() -> None:
+    args = _parse_args()
+    output_dir: Path = args.output_dir
+    case_dir, proc_dir = _validate_input_dirs(args.base_dir)
+    output_dir.mkdir(exist_ok=True)
+
+    pairs = find_resident_pairs(case_dir, proc_dir)
+    if not pairs:
+        console.print("[yellow]Warning:[/yellow] No matching resident file pairs found")
+        sys.exit(0)
+
+    console.print(
+        f"Found [cyan]{len(pairs)}[/cyan] residents with both case and procedure files"
+    )
+
+    config = ProcessConfig(
+        output_dir=output_dir,
+        columns=ColumnMap(),
+        excel_handler=ExcelHandler(),
+    )
+    total_cases, errors, orphan_notices = _process_in_parallel(
+        pairs, config, args.workers
+    )
 
     for resident_id, orphan_count, standalone_name in orphan_notices:
         console.print(

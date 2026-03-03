@@ -218,14 +218,15 @@ class CaseProcessor:
         warnings.append(f"Unrecognized anesthesia type: {anesthesia_input}")
         return None, warnings
 
-    @staticmethod
     def determine_procedure_category(
-        procedure: Any, services: list[str]
+        self, procedure: Any, services: list[str]
     ) -> tuple[ProcedureCategory, list[str]]:
-        """Determine procedure category based on services and procedure text.
+        """Determine procedure category using hybrid classification.
 
-        The actual categorization logic is delegated to patterns/categorization.py
-        for better maintainability and clarity.
+        Uses the configured HybridClassifier (rules + optional ML) so
+        ``use_ml`` and ``ml_threshold`` affect categorization behavior.
+        Falls back to rule-based ``categorize_procedure`` if hybrid output is
+        unavailable or malformed.
 
         Args:
             procedure: Procedure description text (may be None or NaN).
@@ -234,7 +235,12 @@ class CaseProcessor:
         Returns:
             Tuple of (procedure_category, warnings_list).
         """
-        return categorize_procedure(procedure, services)
+        procedure_text = "" if pd.isna(procedure) else str(procedure)
+        hybrid_result = self.classifier.classify(procedure_text, services)
+        category = hybrid_result.get("category")
+        if category is None:
+            return categorize_procedure(procedure, services)
+        return category, hybrid_result.get("warnings", [])
 
     @staticmethod
     def normalize_emergent_flag(value: Any) -> bool:
@@ -517,9 +523,7 @@ class CaseProcessor:
             confidence_score=overall_confidence,
         )
 
-    def get_asa(
-        self, all_warnings: list[str], row: pd.Series
-    ) -> tuple[str, bool, Any]:
+    def get_asa(self, all_warnings: list[str], row: pd.Series) -> tuple[str, bool, Any]:
         # Handle ASA with emergent flag
         raw_asa = row.get(self.column_map.asa)
         asa_str = "" if pd.isna(raw_asa) else str(raw_asa)

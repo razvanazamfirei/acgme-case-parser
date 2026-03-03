@@ -8,7 +8,7 @@ import openpyxl
 import pandas as pd
 import pytest
 
-from case_parser.io import ExcelHandler, read_excel
+from case_parser.io import ExcelHandler, ExcelWriteOptions, read_excel
 
 
 class TestReadExcel:
@@ -81,7 +81,7 @@ class TestExcelHandlerWriteExcel:
         path = tmp_path / "output.xlsx"
         df = pd.DataFrame({"A": [1]})
 
-        handler.write_excel(df, path, sheet_name="MySheet")
+        handler.write_excel(df, path, options=ExcelWriteOptions(sheet_name="MySheet"))
 
         wb = openpyxl.load_workbook(path)
         assert "MySheet" in wb.sheetnames
@@ -128,7 +128,11 @@ class TestAutoSizeColumns:
         path = tmp_path / "output.xlsx"
         df = pd.DataFrame({"Col": ["a"]})
 
-        handler.write_excel(df, path, fixed_widths={"Col": 42})
+        handler.write_excel(
+            df,
+            path,
+            options=ExcelWriteOptions(fixed_widths={"Col": 42}),
+        )
 
         wb = openpyxl.load_workbook(path)
         ws = wb["CaseLog"]
@@ -146,3 +150,14 @@ class TestAutoSizeColumns:
         ws = wb["CaseLog"]
         # Width should be at least len("LongHeaderName") = 14
         assert ws.column_dimensions["A"].width >= len("LongHeaderName")
+
+    @pytest.mark.parametrize("sheet_name", ["Info", "_meta", "info", "_META"])
+    def test_reserved_sheet_name_raises(self, tmp_path, sheet_name):
+        handler = ExcelHandler()
+        path = tmp_path / "output.xlsx"
+        df = pd.DataFrame({"A": [1]})
+
+        with pytest.raises(ValueError, match="sheet_name is reserved"):
+            handler.write_excel(
+                df, path, options=ExcelWriteOptions(sheet_name=sheet_name)
+            )

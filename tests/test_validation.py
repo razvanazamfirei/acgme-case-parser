@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from typing import Any
 
 import pytest
 
@@ -19,52 +20,53 @@ from case_parser.domain import (
 from case_parser.validation import ValidationReport
 
 
-def _make_case(
-    episode_id: str | None = "C001",
-    confidence_score: float = 0.9,
-    warnings: list[str] | None = None,
-    airway: list[AirwayManagement] | None = None,
-    vascular: list[VascularAccess] | None = None,
-    monitoring: list[MonitoringTechnique] | None = None,
-    responsible_provider: str | None = "Dr. Smith",
-    procedure: str | None = "Hip Replacement",
-    age_category: AgeCategory | None = AgeCategory.TWELVE_YR_TO_65_YR,
-) -> ParsedCase:
+def _make_case(**overrides: Any) -> ParsedCase:
     """Build a minimal ParsedCase for testing."""
-    return ParsedCase(
-        raw_date="08/27/2025",
-        episode_id=episode_id,
-        raw_age=45.0,
-        raw_asa="2",
-        raw_anesthesia_type="General",
-        procedure=procedure,
-        procedure_notes=None,
-        responsible_provider=responsible_provider,
-        case_date=date(2025, 8, 27),
-        age_category=age_category,
-        anesthesia_type=AnesthesiaType.GENERAL,
-        procedure_category=ProcedureCategory.OTHER,
-        airway_management=airway or [],
-        vascular_access=vascular or [],
-        monitoring=monitoring or [],
-        parsing_warnings=warnings or [],
-        confidence_score=confidence_score,
-    )
+    values: dict[str, Any] = {
+        "raw_date": "08/27/2025",
+        "episode_id": "C001",
+        "raw_age": 45.0,
+        "raw_asa": "2",
+        "raw_anesthesia_type": "General",
+        "procedure": "Hip Replacement",
+        "procedure_notes": None,
+        "responsible_provider": "Dr. Smith",
+        "case_date": date(2025, 8, 27),
+        "age_category": AgeCategory.TWELVE_YR_TO_65_YR,
+        "anesthesia_type": AnesthesiaType.GENERAL,
+        "procedure_category": ProcedureCategory.OTHER,
+        "airway_management": [],
+        "vascular_access": [],
+        "monitoring": [],
+        "parsing_warnings": [],
+        "confidence_score": 0.9,
+    }
+    alias_map = {
+        "warnings": "parsing_warnings",
+        "airway": "airway_management",
+        "vascular": "vascular_access",
+        "monitoring": "monitoring",
+    }
+    for alias_key, target_key in alias_map.items():
+        if alias_key in overrides:
+            overrides[target_key] = overrides.pop(alias_key)
+    values.update(overrides)
+    return ParsedCase(**values)
 
 
 @pytest.fixture
 def sample_cases() -> list[ParsedCase]:
     """Three cases with varying warnings and confidence levels."""
     return [
-        _make_case("C001", confidence_score=0.9, warnings=[]),
+        _make_case(episode_id="C001", confidence_score=0.9, warnings=[]),
         _make_case(
-            "C002",
+            episode_id="C002",
             confidence_score=0.6,
             warnings=["Missing age value", "Missing age value"],
         ),
-        _make_case("C003", confidence_score=0.3, warnings=[]),
+        _make_case(episode_id="C003", confidence_score=0.3, warnings=[]),
         _make_case(
-            "C004",
+            episode_id="C004",
             confidence_score=0.8,
             warnings=["Missing age value"],
             airway=[AirwayManagement.ORAL_ETT],
@@ -189,7 +191,7 @@ class TestGetExtractionStatistics:
         assert stats["cases_with_monitoring_extraction"] == 1
 
     def test_zero_extractions(self):
-        cases = [_make_case("X1"), _make_case("X2")]
+        cases = [_make_case(episode_id="X1"), _make_case(episode_id="X2")]
         report = ValidationReport(cases)
         stats = report._get_extraction_statistics()
 

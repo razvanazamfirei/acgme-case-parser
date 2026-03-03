@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import operator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +21,17 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+_RESERVED_SHEET_NAMES = {"info", "_meta"}
+
+
+@dataclass(frozen=True)
+class ExcelWriteOptions:
+    """Options controlling Excel output layout and metadata sheets."""
+
+    sheet_name: str = "CaseLog"
+    fixed_widths: dict[str, int] | None = None
+    format_type: str = FORMAT_TYPE_CASELOG
+    version: str = OUTPUT_FORMAT_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -78,14 +90,11 @@ class ExcelHandler:
         """
         self.max_width = max_width
 
-    def write_excel(  # noqa: PLR0913, PLR0917
+    def write_excel(
         self,
         df: pd.DataFrame,
         file_path: str | Path,
-        sheet_name: str = "CaseLog",
-        fixed_widths: dict[str, int] | None = None,
-        format_type: str = FORMAT_TYPE_CASELOG,
-        version: str = OUTPUT_FORMAT_VERSION,
+        options: ExcelWriteOptions | None = None,
     ) -> None:
         """Write DataFrame to Excel file with auto-sized columns.
 
@@ -97,26 +106,43 @@ class ExcelHandler:
             df: DataFrame to write.
             file_path: Destination file path. Parent directories are created
                 automatically.
-            sheet_name: Name of the worksheet to create.
-            fixed_widths: Optional mapping of column name to a fixed character
-                width, bypassing auto-sizing for those columns.
-            format_type: Schema identifier written to Info and _meta sheets
-                (e.g. ``FORMAT_TYPE_CASELOG`` or ``FORMAT_TYPE_STANDALONE``).
-            version: Schema version string written to Info and _meta sheets.
+            options: Output options (sheet name, fixed widths, and metadata).
+                Defaults to ``ExcelWriteOptions()`` when not provided.
 
         Raises:
             PermissionError: If the file is open in another application.
         """
+        write_options = options or ExcelWriteOptions()
+
+        if write_options.sheet_name.casefold() in _RESERVED_SHEET_NAMES:
+            raise ValueError(
+                "sheet_name is reserved for metadata sheets; "
+                "choose a name other than 'Info' or '_meta'"
+            )
+
         file_path = Path(file_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
             logger.info("Writing Excel file: %s", file_path)
             with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                self._autosize_columns(writer, df, sheet_name, fixed_widths)
-                self._write_info_sheet(writer, format_type, version)
-                self._write_meta_sheet(writer, format_type, version)
+                df.to_excel(writer, sheet_name=write_options.sheet_name, index=False)
+                self._autosize_columns(
+                    writer,
+                    df,
+                    write_options.sheet_name,
+                    write_options.fixed_widths,
+                )
+                self._write_info_sheet(
+                    writer,
+                    write_options.format_type,
+                    write_options.version,
+                )
+                self._write_meta_sheet(
+                    writer,
+                    write_options.format_type,
+                    write_options.version,
+                )
             logger.info("Successfully wrote %d rows to %s", len(df), file_path)
         except PermissionError:
             logger.error(

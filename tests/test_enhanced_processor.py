@@ -587,9 +587,7 @@ class TestRowProcessing:
             for warning in case.parsing_warnings
         )
 
-    def test_process_row_block_procedure_with_airway_stays_general(
-        self, processor
-    ):
+    def test_process_row_block_procedure_with_airway_stays_general(self, processor):
         """Documented airway should still infer GA regardless of block text."""
         row = pd.Series({
             "Date": "08/27/2025",
