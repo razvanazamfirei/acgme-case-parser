@@ -283,7 +283,7 @@ JSON, and Excel validation reports with professional output.
 
 **Ruff.toml**: Python linting rules. PLR2004 (magic values) ignored for inline
 thresholds. `.claude/` excluded. Target version Python 3.13, requires-python is
-3.11+ for compatibility. `preview = true` enables additional rules.
+3.12+ for compatibility. `preview = true` enables additional rules.
 
 **Pyproject.toml**: Build configuration using hatchling backend. Package in
 `src/case_parser/` following src-layout. Runtime dependencies:

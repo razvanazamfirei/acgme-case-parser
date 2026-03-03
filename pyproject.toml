@@ -46,8 +46,8 @@ build.targets.wheel.packages = [ "src/case_parser" ]
 [tool.uv]
 default-groups = "all"
 
-[tool.pytest]
-ini_options.testpaths = [ "tests" ]
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
 
 [tool.ty]
 environment.python-version = "3.12"

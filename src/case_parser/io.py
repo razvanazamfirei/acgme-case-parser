@@ -110,6 +110,8 @@ class ExcelHandler:
                 Defaults to ``ExcelWriteOptions()`` when not provided.
 
         Raises:
+            ValueError: If ``options.sheet_name`` uses a reserved metadata
+                sheet name (``"Info"`` or ``"_meta"``).
             PermissionError: If the file is open in another application.
         """
         write_options = options or ExcelWriteOptions()
@@ -169,7 +171,7 @@ class ExcelHandler:
         """
         info_df = pd.DataFrame({
             "Field": ["Format Type", "Version", "Generated"],
-            "Value": [format_type, version, datetime.now(tz=UTC).date().isoformat()],
+            "Value": [format_type, version, datetime.now(tz=UTC).isoformat()],
         })
         info_df.to_excel(writer, sheet_name="Info", index=False)
 

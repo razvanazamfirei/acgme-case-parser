@@ -23,7 +23,7 @@ converting it to standardized case log format with ACGME web form integration.
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - `uv` (recommended) or `pip`
 
 ## Installation

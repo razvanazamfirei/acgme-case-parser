@@ -260,7 +260,7 @@ def main() -> None:
     args = _parse_args()
     output_dir: Path = args.output_dir
     case_dir, proc_dir = _validate_input_dirs(args.base_dir)
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     pairs = find_resident_pairs(case_dir, proc_dir)
     if not pairs:

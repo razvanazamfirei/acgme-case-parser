@@ -529,8 +529,8 @@ class CaseProcessor:
         asa_str = "" if pd.isna(raw_asa) else str(raw_asa)
         emergent = self.normalize_emergent_flag(row.get(self.column_map.emergent))
 
-        if asa_str and "E" not in asa_str.upper() and emergent:
-            asa_str = f"{asa_str}E"
+        if emergent and "E" not in asa_str.upper():
+            asa_str = f"{asa_str}E" if asa_str else "E"
             all_warnings.append("Added 'E' to ASA status based on emergent flag")
         return asa_str, emergent, raw_asa
 
@@ -642,4 +642,4 @@ class CaseProcessor:
         """
         output_rows = [case.to_standalone_output_dict() for case in cases]
         df = pd.DataFrame(output_rows)
-        return df[STANDALONE_OUTPUT_COLUMNS]
+        return df.reindex(columns=STANDALONE_OUTPUT_COLUMNS)
