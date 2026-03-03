@@ -31,6 +31,7 @@ scripts.case-parser = "case_parser.cli:main"
 dev = [
   "pandas-stubs~=3.0.0",
   "pytest>=9.0.2",
+  "pytest-cov>=6.1.1",
   "ruff>=0.15.4",
   "scipy-stubs>=1.17",
   "ty>=0.0.20",
@@ -47,7 +48,19 @@ build.targets.wheel.packages = [ "src/case_parser" ]
 default-groups = "all"
 
 [tool.pytest.ini_options]
+addopts = "--cov=case_parser --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy"
 testpaths = [ "tests" ]
+
+[tool.coverage.run]
+branch = true
+source = [ "case_parser" ]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.ty]
 environment.python-version = "3.12"

@@ -1,0 +1,70 @@
+name: Python Tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/python-tests.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "codecov.yaml"
+      - "src/**"
+      - "tests/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/python-tests.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "codecov.yaml"
+      - "src/**"
+      - "tests/**"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.5"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          cache-suffix: "py${{ steps.setup-python.outputs.python-version }}"
+
+      - name: Sync dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Run tests with coverage
+        run: uv run pytest
+
+      - name: Upload coverage to Codecov
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          report_type: coverage
+          codecov_yml_path: ./codecov.yaml
+          fail_ci_if_error: true
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./junit.xml
+          report_type: test_results
+          token: ${{ secrets.CODECOV_TOKEN }}
