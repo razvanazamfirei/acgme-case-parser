@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "pandas>=3.0.1",
 #   "rich>=14.3.3",
@@ -12,12 +12,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
-import os
 import sys
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -33,9 +32,16 @@ from rich.progress import (
 from src.case_parser.io import (
     CsvHandler,
     ExcelHandler,
+    ExcelWriteOptions,
     join_case_and_procedures,
 )
-from src.case_parser.models import ColumnMap
+from src.case_parser.models import (
+    FORMAT_TYPE_CASELOG,
+    FORMAT_TYPE_STANDALONE,
+    OUTPUT_FORMAT_VERSION,
+    STANDALONE_OUTPUT_FORMAT_VERSION,
+    ColumnMap,
+)
 from src.case_parser.processor import CaseProcessor
 
 # Suppress noisy logging from the pipeline
@@ -50,7 +56,6 @@ class ProcessConfig:
     output_dir: Path
     columns: ColumnMap
     excel_handler: ExcelHandler
-    workers: int = field(default=os.cpu_count() or 1)
 
 
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -95,67 +100,69 @@ def format_name(name: str) -> str:
 def process_resident(
     pairs: tuple[str, Path, Path],
     config: ProcessConfig,
-    processor: CaseProcessor,
-    orphan_notices: list[tuple[str, int, str]],
-    orphan_notices_lock: threading.Lock,
-) -> int:
+) -> tuple[int, tuple[str, int, str] | None]:
     """Process one resident's files and write output Excel.
+
+    Creates its own ``CaseProcessor`` so this function is safe to run in a
+    worker process (no shared ML-model state between workers).
 
     Args:
         pairs: Tuple of (name, case_file, proc_file) where name is the resident
             identifier (``LAST_FIRST`` format), case_file is the path to the
             CaseList CSV, and proc_file is the path to the ProcedureList CSV.
         config: Shared processing configuration (output dir, column map, handlers).
-        processor: Configured ``CaseProcessor`` instance for transforming rows.
-        orphan_notices: Shared list to which orphan-file notices are appended.
-        orphan_notices_lock: Lock protecting concurrent access to orphan_notices.
 
     Returns:
-        Number of cases written to the output Excel file, or 0 if there were
-        no joined cases to process.
+        Tuple of (cases_written, orphan_notice) where orphan_notice is
+        ``(name, count, filename)`` when orphan procedures were found, else None.
     """
-    name: str
-    case_file: Path
-    proc_file: Path
     name, case_file, proc_file = pairs
-    case_df = pd.read_csv(case_file)
-    proc_df = pd.read_csv(proc_file)
-
-    joined, orphans = join_case_and_procedures(case_df, proc_df)
+    processor = CaseProcessor(config.columns, default_year=2025, use_ml=True)
     formatted_name = format_name(name)
+    joined, orphans = join_case_and_procedures(
+        pd.read_csv(case_file),
+        pd.read_csv(proc_file),
+    )
 
+    orphan_notice: tuple[str, int, str] | None = None
     if not orphans.empty:
-        standalone_path = config.output_dir / f"{formatted_name}_standalone.xlsx"
-        config.excel_handler.write_excel(orphans, str(standalone_path))
-        with orphan_notices_lock:
-            orphan_notices.append((name, len(orphans), standalone_path.name))
+        orphan_cases = processor.process_dataframe(
+            CsvHandler(config.columns).normalize_orphan_columns(orphans)
+        )
+        config.excel_handler.write_excel(
+            processor.procedures_to_dataframe(orphan_cases),
+            config.output_dir / f"{formatted_name}_standalone.xlsx",
+            options=ExcelWriteOptions(
+                format_type=FORMAT_TYPE_STANDALONE,
+                version=STANDALONE_OUTPUT_FORMAT_VERSION,
+            ),
+        )
+        orphan_notice = (name, len(orphans), f"{formatted_name}_standalone.xlsx")
 
     if joined.empty:
-        return 0
+        return 0, orphan_notice
 
-    df = CsvHandler(config.columns).normalize_columns(joined)
-
-    # Avoid nested thread pools: when processing multiple residents in parallel
-    # (config.workers > 1), keep row-level processing single-threaded. When
-    # processing residents sequentially, allow row-level parallelism up to CPU count.
-    if config.workers and config.workers > 1:
-        row_workers = 1
-    else:
-        row_workers = os.cpu_count() or 1
-
-    parsed_cases = processor.process_dataframe(df, row_workers)
-    if not parsed_cases:
-        return 0
-
-    output_df = processor.cases_to_dataframe(parsed_cases)
-    output_path = config.output_dir / f"{formatted_name}.xlsx"
-    config.excel_handler.write_excel(
-        output_df, str(output_path), fixed_widths={"Original Procedure": 12}
+    parsed_cases = processor.process_dataframe(
+        CsvHandler(config.columns).normalize_columns(joined),
+        workers=1,
     )
-    return len(parsed_cases)
+    if not parsed_cases:
+        return 0, orphan_notice
+
+    config.excel_handler.write_excel(
+        processor.cases_to_dataframe(parsed_cases),
+        config.output_dir / f"{formatted_name}.xlsx",
+        options=ExcelWriteOptions(
+            fixed_widths={"Original Procedure": 12},
+            format_type=FORMAT_TYPE_CASELOG,
+            version=OUTPUT_FORMAT_VERSION,
+        ),
+    )
+    return len(parsed_cases), orphan_notice
 
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
+    """Parse and validate command line arguments."""
     parser = argparse.ArgumentParser(description="Batch process resident case files")
     parser.add_argument(
         "--base-dir",
@@ -177,10 +184,13 @@ def main() -> None:
         help="Number of parallel workers for resident processing (default: 4)",
     )
     args = parser.parse_args()
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
+    return args
 
-    base_dir: Path = args.base_dir
-    output_dir: Path = args.output_dir
 
+def _validate_input_dirs(base_dir: Path) -> tuple[Path, Path]:
+    """Validate expected input folder structure and return subdirectories."""
     case_dir = base_dir / "case-list"
     proc_dir = base_dir / "procedure-list"
 
@@ -195,7 +205,62 @@ def main() -> None:
         )
         sys.exit(1)
 
-    output_dir.mkdir(exist_ok=True)
+    return case_dir, proc_dir
+
+
+def _sanitize_resident_id(resident_id: str) -> str:
+    """Return a non-sensitive resident identifier for logs and error output."""
+    return hashlib.sha256(resident_id.encode("utf-8")).hexdigest()[:8]
+
+
+def _process_in_parallel(
+    pairs: list[tuple[str, Path, Path]],
+    config: ProcessConfig,
+    workers: int,
+) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, str]]]:
+    """Run resident processing across worker processes."""
+    total_cases = 0
+    errors: list[tuple[str, str]] = []
+    orphan_notices: list[tuple[str, int, str]] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TextColumn("{task.completed}/{task.total}"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Processing residents", total=len(pairs))
+
+        # Parallel: each worker process gets its own Python interpreter and GIL,
+        # providing true CPU parallelism that threads cannot achieve.
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(process_resident, pair, config): pair[0]
+                for pair in pairs
+            }
+            for future in as_completed(futures):
+                resident_id = futures[future]
+                try:
+                    cases_written, orphan_notice = future.result()
+                    total_cases += cases_written
+                    if orphan_notice is not None:
+                        orphan_notices.append(orphan_notice)
+                except Exception:
+                    sanitized_id = _sanitize_resident_id(resident_id)
+                    logger.error("Failed processing resident %s", sanitized_id)
+                    errors.append((sanitized_id, "processing_failed"))
+                progress.advance(task)
+    return total_cases, errors, orphan_notices
+
+
+def main() -> None:
+    args = _parse_args()
+    output_dir: Path = args.output_dir
+    case_dir, proc_dir = _validate_input_dirs(args.base_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     pairs = find_resident_pairs(case_dir, proc_dir)
     if not pairs:
@@ -210,55 +275,22 @@ def main() -> None:
         output_dir=output_dir,
         columns=ColumnMap(),
         excel_handler=ExcelHandler(),
-        workers=args.workers,
     )
-    processor = CaseProcessor(config.columns, default_year=2025, use_ml=True)
-    total_cases = 0
-    errors: list[tuple[str, str]] = []
-    orphan_notices: list[tuple[str, int, str]] = []
-    orphan_notices_lock = threading.Lock()
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TextColumn("{task.completed}/{task.total}"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Processing residents", total=len(pairs))
+    total_cases, errors, orphan_notices = _process_in_parallel(
+        pairs, config, args.workers
+    )
 
-        with ThreadPoolExecutor(max_workers=config.workers) as executor:
-            futures = {
-                executor.submit(
-                    process_resident,
-                    pair,
-                    config,
-                    processor,
-                    orphan_notices,
-                    orphan_notices_lock,
-                ): pair[0]
-                for pair in pairs
-            }
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    total_cases += future.result()
-                except Exception as e:
-                    errors.append((name, str(e)))
-                progress.advance(task)
-
-    for name, orphan_count, standalone_name in orphan_notices:
+    for resident_id, orphan_count, standalone_name in orphan_notices:
         console.print(
-            f"  [yellow]Note:[/yellow] {name}: {orphan_count} orphan procedure(s) "
-            f"→ {standalone_name}"
+            f"  [yellow]Note:[/yellow] {resident_id}: {orphan_count} orphan "
+            f"procedure(s) → {standalone_name}"
         )
 
     console.print(
         f"\n[green]Done.[/green] Processed [cyan]{len(pairs) - len(errors)}[/cyan] "
-        f"residents, [cyan]{total_cases}[/cyan] total cases"
+        f"residents, [cyan]{total_cases}[/cyan] total cases\n",
+        f"Output saved to: [cyan]{output_dir}/[/cyan]",
     )
-    console.print(f"Output saved to: [cyan]{output_dir}/[/cyan]")
 
     if errors:
         console.print(f"\n[yellow]{len(errors)} errors:[/yellow]")
