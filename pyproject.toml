@@ -51,12 +51,16 @@ default-groups = "all"
 addopts = "--cov=case_parser --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy"
 testpaths = [ "tests" ]
 
-[tool.coverage]
-run.branch = true
-run.source = [ "case_parser" ]
-report.show_missing = true
-report.skip_covered = true
-xml.output = "coverage.xml"
+[tool.coverage.run]
+branch = true
+source = [ "case_parser" ]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.ty]
 environment.python-version = "3.12"
