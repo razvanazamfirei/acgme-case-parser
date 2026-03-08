@@ -8,11 +8,21 @@ function that encapsulates the specific rules for that type.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 import pandas as pd
 
 from ..domain import ProcedureCategory
 from .approach_patterns import detect_approach, detect_intracerebral_pathology
-from .procedure_patterns import PROCEDURE_RULES
+from .procedure_patterns import (
+    DEFAULT_PROCEDURE_CATEGORY,
+    OBGYN_SERVICE_KEYWORDS,
+    PROCEDURE_RULES,
+    PROCEDURE_TEXT_RULES,
+    ProcedureRule,
+)
+
+_SERVICE_SENTINELS = {"", "<NA>", "NAN", "NONE"}
 
 
 def categorize_cardiac(procedure_text: str) -> ProcedureCategory:
@@ -29,38 +39,57 @@ def categorize_cardiac(procedure_text: str) -> ProcedureCategory:
     Returns:
         ProcedureCategory for cardiac subtype
     """
-    # Procedures that are always without CPB
     no_cpb_keywords = (
         "TAVR",
         "TAVI",
-        "TRANSCATHETER",
+        "TRANSCATHETER AORTIC VALVE REPLACEMENT",
         "OFF-PUMP",
         "OFF PUMP",
         "OPCAB",
         "BEATING HEART",
         "REMOVAL VENTRICULAR ASSIST DEVICE",
         "REMOVAL IMPLANT",
-        "PERCUTANEOUS",
     )
 
-    # Procedures that use CPB
+    strong_cpb_keywords = (
+        "CPB",
+        "CARDIOPULMONARY BYPASS",
+        "CABG",
+        "CORONARY ARTERY BYPASS",
+        "ASCENDING AORTA GRAFT",
+        "HEART TRANSPLANT",
+        "LUNG TRANSPLANT",
+    )
     cpb_keywords = (
         "BYPASS",
-        "CPB",
         "PUMP",
         "ON-PUMP",
         "ON PUMP",
-        "CARDIOPULMONARY BYPASS",
     )
 
     has_no_cpb = any(kw in procedure_text for kw in no_cpb_keywords)
+    has_strong_cpb = any(kw in procedure_text for kw in strong_cpb_keywords)
     has_cpb = any(kw in procedure_text for kw in cpb_keywords)
 
-    # No CPB takes precedence (e.g., "OFF-PUMP BYPASS")
+    if any(
+        kw in procedure_text
+        for kw in ("OFF-PUMP", "OFF PUMP", "OPCAB", "BEATING HEART")
+    ):
+        return ProcedureCategory.CARDIAC_WITHOUT_CPB
+
+    if has_strong_cpb:
+        return ProcedureCategory.CARDIAC_WITH_CPB
+
     if has_no_cpb:
         return ProcedureCategory.CARDIAC_WITHOUT_CPB
     if has_cpb:
         return ProcedureCategory.CARDIAC_WITH_CPB
+
+    if "TRANSCATHETER" in procedure_text and any(
+        term in procedure_text for term in ("VALVE", "VALVULOPLASTY", "AORTIC")
+    ):
+        return ProcedureCategory.CARDIAC_WITHOUT_CPB
+
     # Default to with CPB for unspecified cardiac procedures
     return ProcedureCategory.CARDIAC_WITH_CPB
 
@@ -145,34 +174,21 @@ def categorize_obgyn(procedure_text: str) -> ProcedureCategory:
     return ProcedureCategory.OTHER
 
 
-def _match_services_to_categories(
-    services: list[str], procedure_text: str
+def _match_rules(
+    values: list[str],
+    procedure_text: str,
+    rules: list[ProcedureRule],
+    *,
+    exclude_in_values: bool,
 ) -> list[ProcedureCategory]:
-    """Match services against procedure rules and return matched categories.
-
-    Iterates over each service, checks it against PROCEDURE_RULES (first
-    matching rule wins per service), applies surgery-specific sub-categorization
-    via _apply_rule_category, and additionally checks each service for OB/GYN
-    keywords to run categorize_obgyn.
-
-    Args:
-        services: List of service strings from the input row (already stripped).
-        procedure_text: Uppercase procedure description used for sub-categorization
-            and exclude_keyword checks.
-
-    Returns:
-        Ordered list of unique ProcedureCategory values matched across all
-        services. An empty list means no service matched any rule.
-    """
-    categories = []
-    for service in services:
-        service_upper = service.upper()
-
-        for rule in PROCEDURE_RULES:
-            if not any(keyword in service_upper for keyword in rule.keywords):
+    """Return ordered unique categories matched by a set of ProcedureRule values."""
+    categories: list[ProcedureCategory] = []
+    for value in values:
+        for rule in rules:
+            if not any(keyword in value for keyword in rule.keywords):
                 continue
             if rule.exclude_keywords and any(
-                excl in service_upper or excl in procedure_text
+                excl in procedure_text or (exclude_in_values and excl in value)
                 for excl in rule.exclude_keywords
             ):
                 continue
@@ -180,8 +196,22 @@ def _match_services_to_categories(
             if category not in categories:
                 categories.append(category)
             break
+    return categories
 
-        if any(keyword in service_upper for keyword in ("GYN", "OB", "OBSTET")):
+
+def _match_services_to_categories(
+    services: list[str], procedure_text: str
+) -> list[ProcedureCategory]:
+    """Match services against procedure rules and return matched categories."""
+    categories = _match_rules(
+        services,
+        procedure_text,
+        PROCEDURE_RULES,
+        exclude_in_values=True,
+    )
+
+    for service in services:
+        if any(keyword in service for keyword in OBGYN_SERVICE_KEYWORDS):
             obgyn_category = categorize_obgyn(procedure_text)
             if obgyn_category not in categories:
                 categories.append(obgyn_category)
@@ -203,14 +233,14 @@ def _fallback_categories_from_text(procedure_text: str) -> list[ProcedureCategor
         List containing at most one ProcedureCategory, or an empty list when
         no rule or OB/GYN keyword matches.
     """
-    for rule in PROCEDURE_RULES:
-        if not any(keyword in procedure_text for keyword in rule.keywords):
-            continue
-        if rule.exclude_keywords and any(
-            excl in procedure_text for excl in rule.exclude_keywords
-        ):
-            continue
-        return [_apply_rule_category(rule.category, procedure_text)]
+    categories = _match_rules(
+        [procedure_text],
+        procedure_text,
+        PROCEDURE_TEXT_RULES,
+        exclude_in_values=False,
+    )
+    if categories:
+        return [categories[0]]
 
     obgyn_category = categorize_obgyn(procedure_text)
     if obgyn_category != ProcedureCategory.OTHER:
@@ -238,10 +268,64 @@ def categorize_procedure(
     Returns:
         Tuple of (ProcedureCategory, warnings_list)
     """
-    warnings = []
-    procedure_text = "" if pd.isna(procedure) else str(procedure).upper()
+    procedure_text = _normalize_procedure_text(procedure)
+    normalized_services = _normalize_services(services)
+    category, warnings = _categorize_procedure_cached(
+        procedure_text,
+        normalized_services,
+    )
+    return category, list(warnings)
 
-    categories = _match_services_to_categories(services, procedure_text)
+
+def categorize_procedures(
+    procedures: list[str | None],
+    services_list: list[list[str]],
+) -> list[tuple[ProcedureCategory, list[str]]]:
+    """Categorize multiple procedures while reusing cached normalization."""
+    if len(procedures) != len(services_list):
+        raise ValueError("services_list must match procedures length")
+
+    results: list[tuple[ProcedureCategory, list[str]]] = []
+    for procedure, services in zip(procedures, services_list, strict=False):
+        category, warnings = _categorize_procedure_cached(
+            _normalize_procedure_text(procedure),
+            _normalize_services(services),
+        )
+        results.append((category, list(warnings)))
+    return results
+
+
+def _normalize_procedure_text(procedure: str | None) -> str:
+    """Normalize optional procedure text to uppercase for caching."""
+    if pd.isna(procedure):
+        return ""
+    return str(procedure).upper()
+
+
+def _normalize_services(services: list[str]) -> tuple[str, ...]:
+    """Normalize service values to uppercase immutable tuples for caching."""
+    normalized: list[str] = []
+    for service in services:
+        try:
+            if bool(pd.isna(service)):
+                continue
+        except (TypeError, ValueError):
+            pass
+
+        service_text = str(service).strip().upper()
+        if service_text and service_text not in _SERVICE_SENTINELS:
+            normalized.append(service_text)
+    return tuple(normalized)
+
+
+@lru_cache(maxsize=32768)
+def _categorize_procedure_cached(
+    procedure_text: str,
+    services: tuple[str, ...],
+) -> tuple[ProcedureCategory, tuple[str, ...]]:
+    """Cached implementation of categorize_procedure()."""
+    warnings: list[str] = []
+    categories = _match_services_to_categories(list(services), procedure_text)
 
     if not categories and procedure_text:
         categories = _fallback_categories_from_text(procedure_text)
@@ -253,15 +337,15 @@ def categorize_procedure(
 
     if len(categories) > 1:
         warnings.append(
-            f"Multiple procedure categories detected for services {services}: "
+            f"Multiple procedure categories detected for services {list(services)}: "
             f"{[c.value for c in categories]}. Using first: {categories[0].value}"
         )
-        return categories[0], warnings
+        return categories[0], tuple(warnings)
 
     if len(categories) == 1:
-        return categories[0], warnings
+        return categories[0], tuple(warnings)
 
-    return ProcedureCategory.OTHER, warnings
+    return ProcedureCategory(DEFAULT_PROCEDURE_CATEGORY), tuple(warnings)
 
 
 def _apply_rule_category(rule_category: str, procedure_text: str) -> ProcedureCategory:
