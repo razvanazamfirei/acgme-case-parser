@@ -124,6 +124,27 @@ class TestHelperFunctions:
         assert 0.0 <= confidence <= 1.0
         assert confidence == pytest.approx(0.3)
 
+    def test_calculate_pattern_confidence_requires_primary_match(self):
+        """Supporting or negation patterns alone should not grant base confidence."""
+        confidence = calculate_pattern_confidence(
+            "ETT support documented without intubation",
+            [r"\blaryngoscope\b"],
+            [r"\bETT\b"],
+            [r"\bwithout\b"],
+        )
+
+        assert confidence == pytest.approx(0.0)
+
+    def test_calculate_pattern_confidence_empty_primary_returns_zero(self):
+        """Empty primary pattern sets should be treated as no hit."""
+        confidence = calculate_pattern_confidence(
+            "Patient was intubated",
+            [],
+            [r"\bETT\b"],
+        )
+
+        assert confidence == pytest.approx(0.0)
+
     def test_clean_names_basic(self):
         """Test basic name cleaning."""
         assert clean_names("Dr. John Smith, MD") == "Dr. John Smith"

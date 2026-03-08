@@ -3,12 +3,14 @@ import json
 import os
 import sys
 import tempfile
+import traceback
+from collections.abc import Mapping
+from contextlib import closing
 from datetime import datetime, timezone
 from http.client import HTTPConnection, HTTPException
 from pathlib import Path
-import traceback
-from contextlib import closing
-from typing import Optional
+from types import TracebackType
+from typing import Any
 
 WEBSERVER_HOST = "localhost"
 WEBSERVER_ENDPOINT = "/api/provenance/call"
@@ -17,19 +19,33 @@ PORT_FILE_SUFFIX = "-provenance-port.txt"
 class ProvenanceHookError(RuntimeError):
     pass
 
-def http_request(method, host, port, location, *, body: Optional[bytes] = None, headers={}, timeout=None) -> bytes:
-    with closing(HTTPConnection(host, port, timeout=timeout)) as connection:
-        connection.request(method, location, body=body, headers=headers)
 
-def get_server_port():
+def http_request(
+    method: str,
+    host: str,
+    port: int,
+    location: str,
+    *,
+    body: bytes | None = None,
+    headers: Mapping[str, str] | None = None,
+    timeout: float | None = None,
+) -> bytes:
+    with closing(HTTPConnection(host, port, timeout=timeout)) as connection:
+        connection.request(method, location, body=body, headers=dict(headers or {}))
+        return connection.getresponse().read()
+
+
+def get_server_port() -> int:
     claude_root = os.getenv("CLAUDE_PROJECT_DIR")
+    if not claude_root:
+        raise ProvenanceHookError("CLAUDE_PROJECT_DIR is not set")
     path_hash = hashlib.md5(claude_root.encode('utf-8')).hexdigest()
     port_file = Path(tempfile.gettempdir()) / (path_hash + PORT_FILE_SUFFIX)
 
     return int(port_file.read_text("utf-8").strip())
 
 
-def send_diff_to_webserver(file_path, timestamp_ms):
+def send_diff_to_webserver(file_path: str, timestamp_ms: int) -> bytes:
     try:
         port = get_server_port()
     except FileNotFoundError as e:
@@ -60,7 +76,7 @@ def send_diff_to_webserver(file_path, timestamp_ms):
             f"Unknown error while sending diff to {url}") from e
 
 
-def extract_file_path(tool_name, tool_input):
+def extract_file_path(tool_name: str, tool_input: Mapping[str, Any]) -> str:
     if tool_name in ["Write", "Edit", "MultiEdit"]:
         return tool_input.get('file_path', 'unknown')
     if tool_name == "NotebookEdit":
@@ -68,12 +84,16 @@ def extract_file_path(tool_name, tool_input):
     return 'unknown'
 
 
-def excepthook(type, value, traceback_):
-    traceback.print_exception(type, value, traceback_, file=sys.stderr)
+def excepthook(
+    exc_type: type[BaseException],
+    value: BaseException,
+    traceback_: TracebackType | None,
+) -> None:
+    traceback.print_exception(exc_type, value, traceback_, file=sys.stderr)
     sys.exit(1)
 
 
-def main():
+def main() -> int:
     data = json.load(sys.stdin)
     tool_name = data.get('tool_name', 'unknown')
 
@@ -87,6 +107,7 @@ def main():
         if file_path:
             timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
             send_diff_to_webserver(file_path, timestamp_ms)
+    return 0
 
 if __name__ == "__main__":
     sys.excepthook = excepthook

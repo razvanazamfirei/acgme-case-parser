@@ -13,6 +13,7 @@ For implementation details and pattern definitions, see:
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pandas as pd
 
@@ -31,17 +32,17 @@ __all__ = [
 ]
 
 
-def clean_names(name: str) -> str:
+def clean_names(name: Any) -> str:
     """
     Clean and standardize provider names.
 
     Removes titles, trailing commas, and normalizes whitespace.
 
     Args:
-        name: Raw provider name
+        name: Raw provider name or missing scalar.
 
     Returns:
-        Cleaned name string
+        Cleaned name string, or an empty string for missing values.
 
     Example:
         clean_names("Smith, John MD")
@@ -58,14 +59,14 @@ def clean_names(name: str) -> str:
     return re.sub(r"\s+", " ", name)
 
 
-def extract_attending(value: str) -> str:
+def extract_attending(value: Any) -> str:
     """Clean an attending name by removing timestamps and extra entries.
 
     Input format: "DOE, JOHN@2023-01-01 08:00:00" or semicolon-separated list.
     Returns the first name with the timestamp stripped.
 
     Args:
-        value: Raw attending name string from the MPOG AnesAttendings field.
+        value: Raw attending name value from the MPOG AnesAttendings field.
             May be NaN or contain multiple semicolon-separated entries, each
             optionally followed by an "@timestamp" suffix.
 

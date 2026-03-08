@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import multiprocessing as mp
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -165,6 +165,14 @@ class CaseProcessor:
         """Return the fallback datetime used when parsing fails."""
         return datetime(year=self.default_year, month=1, day=1, tzinfo=UTC)
 
+    @staticmethod
+    def _normalize_timestamp_to_utc(value: pd.Timestamp | datetime) -> datetime:
+        """Return a consistently UTC-aware datetime from parsed timestamp values."""
+        timestamp = value.to_pydatetime() if isinstance(value, pd.Timestamp) else value
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=UTC)
+        return timestamp.astimezone(UTC)
+
     def parse_date(self, value: Any) -> tuple[datetime, list[str]]:
         """Parse date with fallback to default year.
 
@@ -182,23 +190,23 @@ class CaseProcessor:
             warnings.append(
                 f"Missing date value, using default year {self.default_year}"
             )
-            return (self._default_timestamp, warnings)
+            return self._default_timestamp, warnings
 
         # Try standard parsing first
         timestamp = pd.to_datetime(value, errors="coerce")
         if pd.notna(timestamp):
-            return timestamp.to_pydatetime(), warnings
+            return self._normalize_timestamp_to_utc(timestamp), warnings
 
         # Try specific format
         timestamp = pd.to_datetime(str(value), format="%m/%d/%Y", errors="coerce")
         if pd.notna(timestamp):
-            return timestamp.to_pydatetime(), warnings
+            return self._normalize_timestamp_to_utc(timestamp), warnings
 
         # Fallback to default
         warnings.append(
             f"Could not parse date '{value}', using default year {self.default_year}"
         )
-        return (self._default_timestamp, warnings)
+        return self._default_timestamp, warnings
 
     @staticmethod
     def determine_age_category(age: Any) -> tuple[AgeCategory | None, list[str]]:
@@ -523,11 +531,15 @@ class CaseProcessor:
 
     def _parse_row_metadata(
         self,
-        row: Mapping[str, Any],
+        row: Mapping[Hashable, Any],
         all_warnings: list[str],
         prepared: _PreparedRow | None = None,
     ) -> _ParsedRowMetadata:
-        """Parse non-extraction metadata from a source row."""
+        """Parse non-extraction metadata from a source row.
+
+        Reuses precomputed date/service/category data when ``prepared`` is
+        supplied; otherwise performs the per-row parsing work directly.
+        """
         if prepared is not None:
             timestamp = prepared.timestamp
             all_warnings.extend(prepared.date_warnings)
@@ -579,7 +591,12 @@ class CaseProcessor:
         all_findings: list[Any],
         confidence_scores: list[float],
     ) -> _ExtractionResult:
-        """Extract airway/vascular/monitoring findings and inferred type."""
+        """Extract findings from notes/procedure text and infer anesthesia type.
+
+        Monitoring extraction runs on both free-text notes and the procedure
+        text so technique signals present only in the scheduled procedure are
+        still captured.
+        """
         airway_mgmt, airway_findings = extract_airway_management(notes)
         self._extend_findings(airway_findings, all_findings, confidence_scores)
 
@@ -616,7 +633,7 @@ class CaseProcessor:
 
     def process_row(
         self,
-        row: Mapping[str, Any],
+        row: Mapping[Hashable, Any],
         prepared: _PreparedRow | None = None,
     ) -> ParsedCase:
         """Process a single row into a typed ParsedCase.
@@ -624,6 +641,8 @@ class CaseProcessor:
         Args:
             row: A single row from the input DataFrame, accessed by column
                 names defined in self.column_map.
+            prepared: Optional precomputed date/service/category metadata for
+                this row, typically supplied by batch processing.
 
         Returns:
             ParsedCase with all extracted and categorized data, including
@@ -692,7 +711,7 @@ class CaseProcessor:
             return self._build_error_case(f"Failed to process row: {e!s}")
 
     def get_asa(
-        self, all_warnings: list[str], row: Mapping[str, Any]
+        self, all_warnings: list[str], row: Mapping[Hashable, Any]
     ) -> tuple[str, bool, Any]:
         """Return ASA text, normalized emergent flag, and original ASA value."""
         # Handle ASA with emergent flag
@@ -708,7 +727,7 @@ class CaseProcessor:
     def _process_row_safe(
         self,
         idx: Any,
-        row: Mapping[str, Any],
+        row: Mapping[Hashable, Any],
         prepared: _PreparedRow | None = None,
     ) -> ParsedCase:
         """Process a single row, returning an error case on failure.
@@ -726,11 +745,18 @@ class CaseProcessor:
             logger.exception("Error processing row %d: %s", idx, e)
             return self._build_error_case(f"Failed to process row: {e!s}")
 
-    def _prepare_rows(self, rows: list[dict[str, Any]]) -> list[_PreparedRow]:
-        """Precompute services and procedure categories for a dataframe batch."""
-        date_preparations = self._prepare_dates(
-            [row.get(self.column_map.date) for row in rows]
-        )
+    def _prepare_rows(
+        self, rows: Sequence[Mapping[Hashable, Any]]
+    ) -> list[_PreparedRow]:
+        """Precompute per-row metadata for a dataframe batch.
+
+        This batches date parsing and hybrid categorization so downstream
+        row-processing can reuse normalized timestamps, services, categories,
+        and warning lists.
+        """
+        date_preparations = self._prepare_dates([
+            row.get(self.column_map.date) for row in rows
+        ])
         services_list = [
             self._split_services(row.get(self.column_map.services)) for row in rows
         ]
@@ -758,7 +784,11 @@ class CaseProcessor:
         ]
 
     def _prepare_dates(self, values: list[Any]) -> list[tuple[datetime, list[str]]]:
-        """Parse many dates at once while preserving row-level warnings."""
+        """Parse many dates at once while preserving row-level warnings.
+
+        Successful parses are normalized to UTC-aware datetimes so batched
+        rows use the same timestamp contract as single-row ``parse_date()``.
+        """
         if not values:
             return []
 
@@ -785,33 +815,23 @@ class CaseProcessor:
             strict=False,
         ):
             if is_missing:
-                prepared_dates.append(
-                    (
-                        default_timestamp,
-                        [
-                            "Missing date value, "
-                            f"using default year {self.default_year}"
-                        ],
-                    )
-                )
+                prepared_dates.append((
+                    default_timestamp,
+                    [f"Missing date value, using default year {self.default_year}"],
+                ))
                 continue
 
             if pd.notna(timestamp):
-                if isinstance(timestamp, pd.Timestamp):
-                    prepared_dates.append((timestamp.to_pydatetime(), []))
-                else:
-                    prepared_dates.append((timestamp, []))
+                prepared_dates.append((self._normalize_timestamp_to_utc(timestamp), []))
                 continue
 
-            prepared_dates.append(
-                (
-                    default_timestamp,
-                    [
-                        f"Could not parse date '{value}', "
-                        f"using default year {self.default_year}"
-                    ],
-                )
-            )
+            prepared_dates.append((
+                default_timestamp,
+                [
+                    f"Could not parse date '{value}', "
+                    f"using default year {self.default_year}"
+                ],
+            ))
 
         return prepared_dates
 
@@ -845,7 +865,11 @@ class CaseProcessor:
         df: pd.DataFrame,
         workers: int,
     ) -> list[ParsedCase]:
-        """Process a large ML-heavy dataframe through forked dataframe chunks."""
+        """Process a large ML-heavy dataframe through forked dataframe chunks.
+
+        This path is used only when large-batch heuristics indicate that the
+        process-pool startup cost is likely to be worthwhile.
+        """
         context = _get_process_pool_context()
         if context is None:
             raise RuntimeError("fork-based process pools are not available")
@@ -927,7 +951,9 @@ class CaseProcessor:
 
         rows = df.to_dict(orient="records")
         try:
-            prepared_rows: list[_PreparedRow | None] = self._prepare_rows(rows)
+            prepared_rows: list[_PreparedRow | None] = [
+                *self._prepare_rows(rows)
+            ]
         except Exception as e:
             logger.exception(
                 "Batch row preparation failed; falling back to per-row processing: %s",

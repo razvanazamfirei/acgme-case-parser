@@ -56,20 +56,19 @@ def test_parsed_case_creation():
 
 def test_services_field_validator():
     """Test that services field properly splits newline-separated values."""
-    # Test with string input
-    case = ParsedCase(
-        raw_date="08/27/2025",
-        episode_id="12345",
-        raw_age=45.0,
-        raw_asa="2",
-        emergent=False,
-        raw_anesthesia_type="general",
-        services="ORTHO\nTRAUMA",  # Newline-separated
-        procedure="Hip Replacement",
-        procedure_notes=None,
-        responsible_provider="Dr. Smith",
-        case_date=date(2025, 8, 27),
-    )
+    case = ParsedCase.model_validate({
+        "raw_date": "08/27/2025",
+        "episode_id": "12345",
+        "raw_age": 45.0,
+        "raw_asa": "2",
+        "emergent": False,
+        "raw_anesthesia_type": "general",
+        "services": "ORTHO\nTRAUMA",
+        "procedure": "Hip Replacement",
+        "procedure_notes": None,
+        "responsible_provider": "Dr. Smith",
+        "case_date": date(2025, 8, 27),
+    })
 
     assert case.services == ["ORTHO", "TRAUMA"]
 

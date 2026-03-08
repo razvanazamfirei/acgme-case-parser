@@ -1,4 +1,9 @@
-"""I/O operations for reading and writing Excel files and CSV v2 format."""
+"""I/O operations for reading and writing Excel files and CSV v2 format.
+
+Behavioral assumption:
+- Orphan ProcedureList rows default to age 30 so they map to the adult
+  12-65 age range when the export does not include age.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import starmap
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from openpyxl.utils import get_column_letter
@@ -24,9 +30,10 @@ from .models import (
 logger = logging.getLogger(__name__)
 _RESERVED_SHEET_NAMES = {"info", "_meta"}
 _CASE_LEVEL_TECHNIQUE_MIN_RANK = 2
+DEFAULT_ORPHAN_AGE = 30
 
 
-def _combine_non_empty_text(*values: object) -> str | None:
+def _combine_non_empty_text(*values: Any) -> str | None:
     """Join distinct non-empty text fields while preserving first-seen order."""
     parts: list[str] = []
     seen: set[str] = set()
@@ -39,6 +46,13 @@ def _combine_non_empty_text(*values: object) -> str | None:
         seen.add(text)
         parts.append(text)
     return "\n".join(parts) if parts else None
+
+
+def _assemble_airway_detail(rank: int, comment: Any, details: Any) -> str | None:
+    """Build case-level airway detail text only for sufficiently invasive techniques."""
+    if rank < _CASE_LEVEL_TECHNIQUE_MIN_RANK:
+        return None
+    return _combine_non_empty_text(comment, details)
 
 
 @dataclass(frozen=True)
@@ -56,12 +70,16 @@ class ExcelWriteOptions:
 # ---------------------------------------------------------------------------
 
 
-def read_excel(file_path: str | Path, sheet_name: str | int = 0) -> DataFrame:
+def read_excel(
+    file_path: str | Path, sheet_name: str | int | None = 0
+) -> DataFrame:
     """Read an Excel file and return a DataFrame.
 
     Args:
         file_path: Path to the Excel file
-        sheet_name: Sheet name or index to read (default: first sheet)
+        sheet_name: Sheet name or index to read. ``None`` requests all sheets
+            from pandas and will raise ``TypeError`` because this helper only
+            supports a single resolved sheet.
 
     Returns:
         DataFrame containing the sheet data
@@ -362,7 +380,8 @@ def join_case_and_procedures(  # noqa: PLR0912
                     ranked_procs["ProcedureName"].map(TECHNIQUE_RANK).fillna(0)
                 )
                 primary_procs = (
-                    ranked_procs.sort_values(
+                    ranked_procs
+                    .sort_values(
                         by=["MPOG_Case_ID", "_technique_rank"],
                         ascending=[True, False],
                         kind="stable",
@@ -385,17 +404,17 @@ def join_case_and_procedures(  # noqa: PLR0912
                         if "Details" in primary_procs.columns
                         else [None] * len(primary_procs)
                     )
-                    primary_procs["Airway_Details"] = [
-                        _combine_non_empty_text(comment, details)
-                        if rank >= _CASE_LEVEL_TECHNIQUE_MIN_RANK
-                        else None
-                        for rank, comment, details in zip(
-                            primary_procs["_technique_rank"],
-                            comment_values,
-                            detail_values,
-                            strict=False,
+                    primary_procs["Airway_Details"] = list(
+                        starmap(
+                            _assemble_airway_detail,
+                            zip(
+                                primary_procs["_technique_rank"],
+                                comment_values,
+                                detail_values,
+                                strict=False,
+                            ),
                         )
-                    ]
+                    )
                 proc_agg_columns = ["MPOG_Case_ID", "Airway_Type"]
                 if "Airway_Details" in primary_procs.columns:
                     proc_agg_columns.append("Airway_Details")
@@ -559,8 +578,9 @@ class CsvHandler:
             AIMS_Actual_Procedure_Text → procedure
             AnesAttendingNames       → anesthesiologist
 
-        Age is not present in MPOG ProcedureList exports; default to 30 years so
-        standalone procedures map to the required 12-65 age category.
+        Age is not present in MPOG ProcedureList exports; default to
+        ``DEFAULT_ORPHAN_AGE`` years so standalone procedures map to the
+        required 12-65 age category.
 
         Args:
             orphan_df: DataFrame of unmatched ProcedureList rows.
@@ -588,7 +608,8 @@ class CsvHandler:
         else:
             result[column_map.anesthesiologist] = pd.NA
 
-        # Age is not exported in MPOG ProcedureList; default to adult range.
-        result[column_map.age] = 30
+        result[column_map.age] = (
+            DEFAULT_ORPHAN_AGE  # Maps orphan procedures to the adult 12-65 range.
+        )
 
         return result.reset_index(drop=True)

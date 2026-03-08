@@ -267,7 +267,8 @@ def process_single_excel_file(
     Args:
         file_path: Path to the Excel file to process.
         processor: Initialized CaseProcessor to use for parsing.
-        sheet_name: Sheet name or index to read; uses the first sheet if None.
+        options: Shared runtime options, including sheet selection and worker
+            count.
 
     Returns:
         List of ParsedCase objects. Empty if the file contains no data rows.
@@ -299,7 +300,7 @@ def process_excel_directory(
     Args:
         directory: Directory containing Excel files to process.
         processor: Initialized CaseProcessor to use for parsing.
-        sheet_name: Sheet name or index to read from each file.
+        options: Shared runtime options applied to every file in the directory.
 
     Returns:
         Combined list of ParsedCase objects from all files in the directory.
@@ -347,8 +348,8 @@ def process_excel(
     Args:
         input_path: Path to an Excel file or directory of Excel files.
         columns: Column mapping configuration.
-        default_year: Fallback year used when a date cannot be parsed.
-        sheet_name: Sheet name or index to read; uses the first sheet if None.
+        options: Shared runtime options, including default year, optional sheet
+            selection, ML usage, and worker count.
 
     Returns:
         Tuple of (cases, output_df) where cases is the list of ParsedCase objects
@@ -375,18 +376,21 @@ def process_csv(
     """Process a CSV v2 directory (MPOG supervised export).
 
     Reads matched CaseList/ProcedureList CSV pairs, processes all cases, and
-    writes separate standalone files for orphan blocks and neuraxial procedures.
+    writes separate standalone files for orphan blocks and neuraxial
+    procedures derived from unmatched ProcedureList rows.
 
     Args:
         input_path: Directory containing CSV v2 file pairs.
         output_path: Desired path for the primary output Excel file (used to
             derive standalone orphan output filenames).
         columns: Column mapping configuration.
-        default_year: Fallback year used when a date cannot be parsed.
         excel_handler: ExcelHandler instance used to write standalone output.
+        options: Shared runtime options, including default year, ML usage, and
+            worker count.
 
     Returns:
-        Tuple of (cases, output_df) for the main (non-orphan) cases.
+        Tuple of (cases, output_df) for the main matched cases. Standalone
+        orphan procedures are written separately when present.
     """
     console.print(
         Panel(
@@ -438,7 +442,7 @@ def _write_standalone_output(
     cases: list[ParsedCase],
     spec: _StandaloneOutputSpec,
 ) -> None:
-    """Write one standalone orphan-procedure output when rows are present."""
+    """Write one standalone orphan-procedure workbook when rows are present."""
     if not cases:
         return
 
@@ -486,7 +490,13 @@ def is_block_standalone_case(case: ParsedCase) -> bool:
 def split_standalone_cases(
     cases: list[ParsedCase],
 ) -> tuple[list[ParsedCase], list[ParsedCase]]:
-    """Split standalone orphan procedures into block and neuraxial buckets."""
+    """Split standalone orphan procedures into block and neuraxial buckets.
+
+    Cases with explicit neuraxial hints route to the neuraxial output. Cases
+    with block hints or a normalized block site route to the block output.
+    Remaining unmatched procedures intentionally fall back to the neuraxial
+    bucket.
+    """
     block_cases: list[ParsedCase] = []
     neuraxial_cases: list[ParsedCase] = []
 
@@ -497,6 +507,8 @@ def split_standalone_cases(
         if is_block_standalone_case(case) or bool(case.nerve_block_type):
             block_cases.append(case)
             continue
+        # Intentional fallback for unmatched procedures; see
+        # test_split_standalone_cases_defaults_unknown_to_neuraxial_bucket.
         neuraxial_cases.append(case)
 
     return block_cases, neuraxial_cases
@@ -620,9 +632,11 @@ def main() -> None:
     """Main entry point for the case-parser CLI.
 
     Parses arguments, validates inputs, dispatches to the appropriate processing
-    path (Excel or CSV v2), optionally writes a validation report, writes the
-    output Excel file, and prints a summary. Exits with a non-zero status code
-    on any error.
+    path (Excel workbook input or CSV v2 directory input), optionally writes a
+    validation report, writes the primary output workbook, and prints a
+    summary. In CSV v2 mode, standalone orphan procedures may also be written
+    to separate block and neuraxial workbooks. Exits with a non-zero status
+    code on any error.
     """
     parser = build_arg_parser()
     args = parser.parse_args()

@@ -87,6 +87,12 @@ def calculate_pattern_confidence(
         confidence = calculate_pattern_confidence(text, primary, supporting)
         # Returns: 0.6 (base 0.5 + supporting 0.1)
     """
+    if not primary_patterns:
+        return 0.0
+
+    if not any(_coerce_pattern(pattern).search(text) for pattern in primary_patterns):
+        return 0.0
+
     confidence = 0.5
 
     if supporting_patterns:

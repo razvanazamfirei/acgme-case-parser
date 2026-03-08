@@ -14,19 +14,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from sklearn.model_selection import train_test_split
-from utils import run_python_script
 
 from case_parser.ml.predictor import MLPredictor
-
-try:
-    from ml_training.utils import normalize_category_label
-except ModuleNotFoundError:
-    from utils import normalize_category_label
-
+from ml_training.utils import normalize_category_label, run_python_script
 
 console = Console()
 
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CASE_DIR = PROJECT_ROOT / "Output-Supervised" / "case-list"
 DEFAULT_PREPARED_DATA = PROJECT_ROOT / "ml_training_data" / "batch_prepared.csv"
 DEFAULT_SEEN_DATA = PROJECT_ROOT / "ml_training_data" / "seen_train.csv"

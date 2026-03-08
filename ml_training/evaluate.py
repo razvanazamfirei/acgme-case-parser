@@ -15,12 +15,7 @@ from rich.table import Table
 
 from case_parser.ml.predictor import MLPredictor
 from case_parser.patterns.categorization import categorize_procedure
-
-try:
-    from ml_training.utils import normalize_category_label
-except ModuleNotFoundError:
-    from utils import normalize_category_label
-
+from ml_training.utils import normalize_category_label
 
 console = Console()
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 import pandas as pd
@@ -51,6 +51,7 @@ class TestDateParsing:
         parsed_date, warnings = processor.parse_date("08/27/2025")
 
         assert isinstance(parsed_date, datetime)
+        assert parsed_date.tzinfo == UTC
         assert parsed_date.year == 2025
         assert parsed_date.month == 8
         assert parsed_date.day == 27
@@ -60,6 +61,7 @@ class TestDateParsing:
         """Test parsing missing date falls back to default year."""
         parsed_date, warnings = processor.parse_date(None)
 
+        assert parsed_date.tzinfo == UTC
         assert parsed_date.year == 2025
         assert parsed_date.month == 1
         assert parsed_date.day == 1
@@ -70,6 +72,7 @@ class TestDateParsing:
         """Test parsing invalid date falls back to default year."""
         parsed_date, warnings = processor.parse_date("invalid-date")
 
+        assert parsed_date.tzinfo == UTC
         assert parsed_date.year == 2025
         assert len(warnings) == 1
         assert "Could not parse" in warnings[0]
@@ -79,10 +82,25 @@ class TestDateParsing:
         timestamp = pd.Timestamp("2024-12-15")
         parsed_date, warnings = processor.parse_date(timestamp)
 
+        assert parsed_date.tzinfo == UTC
         assert parsed_date.year == 2024
         assert parsed_date.month == 12
         assert parsed_date.day == 15
         assert len(warnings) == 0
+
+    def test_prepare_dates_normalizes_all_rows_to_utc(self, processor):
+        """Prepared timestamps should be consistently UTC-aware for every row."""
+        prepared_dates = processor._prepare_dates([
+            "08/27/2025",
+            None,
+            pd.Timestamp("2024-12-15"),
+        ])
+
+        assert [timestamp.tzinfo for timestamp, _warnings in prepared_dates] == [
+            UTC,
+            UTC,
+            UTC,
+        ]
 
 
 class TestAgeCategorization:

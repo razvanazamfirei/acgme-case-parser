@@ -8,7 +8,9 @@ function that encapsulates the specific rules for that type.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import lru_cache
+from typing import Any, cast
 
 import pandas as pd
 
@@ -250,7 +252,7 @@ def _fallback_categories_from_text(procedure_text: str) -> list[ProcedureCategor
 
 
 def categorize_procedure(
-    procedure: str | None, services: list[str]
+    procedure: str | None, services: Sequence[object]
 ) -> tuple[ProcedureCategory, list[str]]:
     """
     Categorize a procedure based on services and procedure text.
@@ -263,7 +265,8 @@ def categorize_procedure(
 
     Args:
         procedure: Procedure description text
-        services: List of service names
+        services: Sequence of raw service values. Missing/null sentinels are
+            ignored during normalization.
 
     Returns:
         Tuple of (ProcedureCategory, warnings_list)
@@ -278,8 +281,8 @@ def categorize_procedure(
 
 
 def categorize_procedures(
-    procedures: list[str | None],
-    services_list: list[list[str]],
+    procedures: Sequence[str | None],
+    services_list: Sequence[Sequence[object]],
 ) -> list[tuple[ProcedureCategory, list[str]]]:
     """Categorize multiple procedures while reusing cached normalization."""
     if len(procedures) != len(services_list):
@@ -302,12 +305,12 @@ def _normalize_procedure_text(procedure: str | None) -> str:
     return str(procedure).upper()
 
 
-def _normalize_services(services: list[str]) -> tuple[str, ...]:
-    """Normalize service values to uppercase immutable tuples for caching."""
+def _normalize_services(services: Sequence[object]) -> tuple[str, ...]:
+    """Normalize raw service values to uppercase immutable tuples for caching."""
     normalized: list[str] = []
     for service in services:
         try:
-            if bool(pd.isna(service)):
+            if bool(pd.isna(cast(Any, service))):
                 continue
         except (TypeError, ValueError):
             pass
