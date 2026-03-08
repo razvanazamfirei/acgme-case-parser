@@ -15,7 +15,7 @@ from rich.table import Table
 
 from case_parser.ml.config import DEFAULT_ML_THRESHOLD
 from case_parser.ml.hybrid import ClassificationResult, HybridClassifier
-from case_parser.ml.inputs import resolve_service_column
+from case_parser.ml.inputs import coerce_service_text, resolve_service_column
 from case_parser.ml.predictor import MLPredictor
 from case_parser.patterns.categorization import categorize_procedure
 
@@ -61,18 +61,7 @@ class EvaluationSummary:
 
 
 def _resolve_procedure_column(df: pd.DataFrame) -> str:
-    """
-    Selects which column in the DataFrame contains the procedure text.
-    
-    Parameters:
-        df (pandas.DataFrame): DataFrame to inspect for known procedure text columns.
-    
-    Returns:
-        str: The name of the procedure text column found ("AIMS_Actual_Procedure_Text" or "procedure").
-    
-    Raises:
-        ValueError: If neither "AIMS_Actual_Procedure_Text" nor "procedure" is present in df.columns.
-    """
+    """Return the procedure-text column name."""
     if "AIMS_Actual_Procedure_Text" in df.columns:
         return "AIMS_Actual_Procedure_Text"
     if "procedure" in df.columns:
@@ -84,17 +73,7 @@ def _resolve_label_column(
     df: pd.DataFrame,
     requested_column: str | None,
 ) -> str | None:
-    """
-    Selects which DataFrame column should be used as the ground-truth label.
-    
-    If a requested column name is provided, it must exist in the DataFrame; otherwise the function searches for the first known candidate column name and returns it.
-    
-    Parameters:
-        requested_column (str | None): Optional explicit label column name to use. If provided and not found in `df`, a ValueError is raised.
-    
-    Returns:
-        str | None: The chosen label column name, or `None` if no known candidate column exists.
-    """
+    """Return the requested label column or the first known label column."""
     if requested_column:
         if requested_column not in df.columns:
             raise ValueError(f"Label column not found: {requested_column}")
@@ -107,15 +86,7 @@ def _resolve_label_column(
 
 
 def _split_services(value: str) -> list[str]:
-    """
-    Produce a list of service entries parsed from a newline-delimited string.
-    
-    Parameters:
-    	value (str): Newline-delimited service text; entries may contain surrounding whitespace.
-    
-    Returns:
-    	services (list[str]): Trimmed, non-empty service items in the original order; empty lines are discarded.
-    """
+    """Split newline-delimited service text into trimmed items."""
     return [item.strip() for item in value.split("\n") if item.strip()]
 
 
@@ -124,43 +95,21 @@ def _build_service_inputs(
     service_col: str | None,
     total_cases: int,
 ) -> tuple[list[list[str]] | None, list[list[str]]]:
-    """
-    Produce ML service inputs and per-case service rows for rule/hybrid processing.
-    
-    Parameters:
-        df (pd.DataFrame): Source dataframe containing service column values.
-        service_col (str | None): Name of the column with newline-delimited service strings, or `None` when no service information is available.
-        total_cases (int): Number of cases (rows) in `df`; used to create empty placeholders when `service_col` is `None`.
-    
-    Returns:
-        tuple:
-            - ml_inputs (list[list[str]] | None): Per-case lists of service tokens for the ML path, or `None` if `service_col` is `None`.
-            - service_rows (list[list[str]]): Per-case lists of individual services for rule/hybrid processing; contains an empty list for cases with no service information.
-    """
+    """Build ML and rule/hybrid service-token rows from the input DataFrame."""
     if service_col is None:
         return None, [[] for _ in range(total_cases)]
 
     normalized_services = [
-        _normalize_optional_label(value)
-        for value in df[service_col].tolist()
+        coerce_service_text(value) for value in df[service_col].tolist()
     ]
     service_rows = [
-        _split_services(value) if value else []
-        for value in normalized_services
+        _split_services(value) if value else [] for value in normalized_services
     ]
     return service_rows, service_rows
 
 
 def _normalize_optional_label(value: Any) -> str:
-    """
-    Normalize a ground-truth label value into a canonical label while preserving blank/missing semantics.
-    
-    Parameters:
-        value (Any): Label value to normalize; may be NaN, an empty string, or an optional-value sentinel (e.g., "n/a", "none").
-    
-    Returns:
-        str: The normalized category label, or an empty string when the input is missing, blank, or represents an optional/missing value.
-    """
+    """Normalize an optional ground-truth label while preserving blanks."""
     if pd.isna(value):
         return ""
 
@@ -173,15 +122,7 @@ def _normalize_optional_label(value: Any) -> str:
 
 
 def _normalize_hybrid_prediction(result: Any) -> str:
-    """
-    Normalize a hybrid-classifier output into a stable comparison token.
-    
-    Parameters:
-        result (Any): The hybrid classifier output (may be a dict, an object with a `category` attribute, or `None`).
-    
-    Returns:
-        str: A normalized category label suitable for comparison, or the sentinel `_HYBRID_UNCLASSIFIED` when the result or its category is missing.
-    """
+    """Normalize one hybrid-classifier output into a comparison token."""
     if result is None:
         return _HYBRID_UNCLASSIFIED
 
@@ -205,16 +146,7 @@ def _print_header(
     label_column: str | None,
     hybrid_threshold: float,
 ) -> None:
-    """
-    Prints a formatted evaluation header panel showing model and dataset metadata.
-    
-    Parameters:
-        model_path (Path): Filesystem path to the trained model being evaluated.
-        data_path (Path): Filesystem path to the input CSV dataset.
-        total_cases (int): Number of cases (rows) included in the evaluation.
-        label_column (str | None): Ground-truth label column used for labeled evaluation, or `None` if not provided.
-        hybrid_threshold (float): Confidence threshold used by the hybrid classifier (0.0–1.0).
-    """
+    """Print a header panel with evaluation inputs and settings."""
     console.print(
         Panel(
             f"[bold]Evaluating Model[/bold]\n"
@@ -230,13 +162,7 @@ def _print_header(
 
 
 def _bin_confidence(score: float, bins: dict[str, int]) -> None:
-    """
-    Increment the appropriate confidence bin counter for a numerical score.
-    
-    Parameters:
-        score (float): Confidence score between 0.0 and 1.0 used to determine the bin.
-        bins (dict[str, int]): Mutable mapping with keys "high", "medium", and "low"; the function increments the matching bin's integer count in place.
-    """
+    """Increment the matching confidence bin for one score."""
     if score >= 0.85:
         bins["high"] += 1
     elif score >= 0.7:
@@ -252,18 +178,7 @@ def evaluate_model(  # noqa: PLR0914
     label_column: str | None = None,
     hybrid_threshold: float = DEFAULT_ML_THRESHOLD,
 ) -> EvaluationSummary:
-    """
-    Evaluate a trained model against procedures in a CSV and compute aggregated agreement, confidence, disagreement, and optional labeled accuracies.
-    
-    Parameters:
-        model_path (Path): Path to the trained model file to load for evaluation.
-        data_path (Path): Path to the CSV file containing procedure text and optional service/label columns.
-        label_column (str | None): Optional explicit ground-truth label column name; when omitted the function will attempt to auto-detect a label column from known candidates.
-        hybrid_threshold (float): Confidence threshold used by the hybrid classifier to decide when to prefer ML predictions.
-    
-    Returns:
-        EvaluationSummary: Aggregated results including total case count, counts per confidence bin (high/medium/low), agreement count between ML and rule predictions, a list of disagreement case records, and an optional LabeledAccuracySummary when ground-truth labels are present.
-    """
+    """Evaluate rule, ML, and hybrid predictions for one CSV dataset."""
     predictor = MLPredictor.load(model_path)
     df = pd.read_csv(data_path)
     procedure_col = _resolve_procedure_column(df)
@@ -370,12 +285,7 @@ def evaluate_model(  # noqa: PLR0914
 
 
 def _print_summary(summary: EvaluationSummary) -> None:
-    """
-    Render and print evaluation summaries (confidence distribution, agreement statistics, and optional labeled-ground-truth accuracies) to the console.
-    
-    Parameters:
-        summary (EvaluationSummary): Aggregated evaluation results including total case count, confidence-bin counts (high/medium/low), agreement_count, disagreement_cases, and an optional labeled_accuracy summary. This function formats those fields into console tables and prints them; it does not return a value.
-    """
+    """Render confidence, agreement, and optional labeled-accuracy output."""
     table = Table(title="Confidence Distribution", show_header=True)
     table.add_column("Confidence Level", style="cyan")
     table.add_column("Count", justify="right", style="yellow")
@@ -419,12 +329,7 @@ def _print_summary(summary: EvaluationSummary) -> None:
 
 
 def _save_disagreements(disagreement_cases: list[dict[str, Any]]) -> None:
-    """
-    Write disagreement case records to ml_training_data/flagged_for_review.csv for human review.
-    
-    Parameters:
-        disagreement_cases (list[dict[str, Any]]): Sequence of disagreement records (one dict per case). If empty, nothing is written.
-    """
+    """Write disagreement records to the default review CSV."""
     if not disagreement_cases:
         return
     output_dir = Path("ml_training_data")
@@ -435,13 +340,7 @@ def _save_disagreements(disagreement_cases: list[dict[str, Any]]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """
-    Create and configure the command-line argument parser for the evaluation tool.
-    
-    Returns:
-        argparse.ArgumentParser: Parser with positional arguments `model` and `data`,
-        and optional `--label-column` and `--hybrid-threshold` options.
-    """
+    """Build the CLI parser for model evaluation."""
     parser = argparse.ArgumentParser(description="Evaluate ML and hybrid models on CSV")
     parser.add_argument("model", type=Path, help="Path to model file")
     parser.add_argument("data", type=Path, help="Path to input CSV")
@@ -462,12 +361,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """
-    Run the CLI flow: validate inputs, evaluate the model on the CSV, print the summary, and save disagreements.
-    
-    Returns:
-        int: 0 on success, 1 on validation error (missing model or data file, or invalid hybrid-threshold).
-    """
+    """Run the evaluation CLI."""
     args = build_parser().parse_args()
 
     if not args.model.exists():
@@ -484,12 +378,16 @@ def main() -> int:
         )
         return 1
 
-    summary = evaluate_model(
-        args.model,
-        args.data,
-        label_column=args.label_column,
-        hybrid_threshold=args.hybrid_threshold,
-    )
+    try:
+        summary = evaluate_model(
+            args.model,
+            args.data,
+            label_column=args.label_column,
+            hybrid_threshold=args.hybrid_threshold,
+        )
+    except ValueError as exception:
+        console.print(f"[red]Error:[/red] {exception}")
+        return 1
     _print_summary(summary)
     _save_disagreements(summary.disagreement_cases)
     return 0

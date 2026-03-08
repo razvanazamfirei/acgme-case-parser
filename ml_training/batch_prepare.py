@@ -31,25 +31,7 @@ console = Console()
 def process_single_file(
     file_path: Path, sample_size: int | None = None
 ) -> dict[str, Any]:
-    """
-    Extract rule-categorized cases from a CSV file.
-    
-    Parameters:
-        file_path (Path): Path to the CSV file to process.
-        sample_size (int | None): Optional maximum number of rows to sample from the file; if None all rows are processed.
-    
-    Returns:
-        dict: On success, a dict with keys:
-            - "file": filename (str)
-            - "total_rows": number of rows read or sampled (int)
-            - "valid_cases": number of extracted cases (int)
-            - "cases": list of case dicts, each containing "file", "procedure", "service_text",
-              "rule_category", "warnings", "age", "asa", and "emergency".
-        On failure, a dict with keys:
-            - "file": filename (str)
-            - "error": stringified exception
-            - "cases": empty list
-    """
+    """Extract rule-categorized cases from one CSV file."""
     try:
         df = pd.read_csv(file_path)
         service_column = resolve_service_column(df)
@@ -69,7 +51,7 @@ def process_single_file(
             )
             category, warnings = categorize_procedure(
                 procedure,
-                [item for item in service_text.split("\n") if item],
+                [item.strip() for item in service_text.split("\n") if item.strip()],
             )
             cases.append({
                 "file": file_path.name,

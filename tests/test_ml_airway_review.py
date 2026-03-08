@@ -18,10 +18,10 @@ from ml_training import airway_review
 def _parsed_case(**overrides) -> ParsedCase:
     """
     Create a canonical ParsedCase model populated with typical test values.
-    
+
     Parameters:
         overrides (dict): Mapping of ParsedCase field names to replacement values; any provided keys are applied to the base model before it is returned.
-    
+
     Returns:
         ParsedCase: A ParsedCase instance initialized with default test data, with `overrides` applied.
     """
@@ -116,7 +116,7 @@ def test_stable_fraction_is_strictly_less_than_one(monkeypatch):
         def hexdigest(self) -> str:
             """
             Return a deterministic placeholder SHA-256 hex digest composed of eight 'f' characters followed by fifty-six '0' characters.
-            
+
             Returns:
                 str: A 64-character hexadecimal string: 'ffffffff' followed by 56 '0' characters.
             """
@@ -125,6 +125,31 @@ def test_stable_fraction_is_strictly_less_than_one(monkeypatch):
     monkeypatch.setattr(airway_review.hashlib, "sha256", lambda _value: _FakeHash())
 
     assert airway_review._stable_fraction("case-key") < 1.0
+
+
+def test_build_case_key_uses_unique_fallback_for_missing_episode_id():
+    procedure = "Repeated procedure text"
+    first = _parsed_case(
+        episode_id=None,
+        procedure=procedure,
+        raw_date="2025-01-01",
+        procedure_notes="note one",
+    )
+    second = _parsed_case(
+        episode_id=None,
+        procedure=procedure,
+        raw_date="2025-01-02",
+        procedure_notes="note two",
+    )
+
+    first_key = airway_review._build_case_key("pair.csv", first)
+    second_key = airway_review._build_case_key("pair.csv", second)
+
+    assert first_key != second_key
+    assert first_key.endswith(procedure[:80])
+    assert second_key.endswith(procedure[:80])
+    assert "missing-case-id-" in first_key
+    assert "missing-case-id-" in second_key
 
 
 def test_review_bucket_limits_sum_to_max_cases():
@@ -142,8 +167,7 @@ def test_review_bucket_limits_sum_to_max_cases():
 def test_select_records_handles_zero_capacity_bucket_limits():
     bucket_limits = airway_review._review_bucket_limits(2)
     heap_limits = {
-        bucket: max(limit * 4, limit)
-        for bucket, limit in bucket_limits.items()
+        bucket: max(limit * 4, limit) for bucket, limit in bucket_limits.items()
     }
     heaps = {bucket: [] for bucket in airway_review.BUCKET_ORDER}
 
@@ -253,6 +277,21 @@ def test_select_records_can_backfill_from_zero_quota_bucket():
         "ga_mac",
         "ga_mac",
     ]
+
+
+def test_discover_pair_paths_matches_non_supervised_suffixes(tmp_path):
+    base_dir = tmp_path / "Output-Supervised"
+    case_dir = base_dir / "case-list"
+    proc_dir = base_dir / "procedure-list"
+    case_dir.mkdir(parents=True)
+    proc_dir.mkdir(parents=True)
+
+    case_path = case_dir / "TEST.CaseList.csv"
+    proc_path = proc_dir / "TEST.ProcedureList.csv"
+    case_path.write_text("case\n", encoding="utf-8")
+    proc_path.write_text("proc\n", encoding="utf-8")
+
+    assert airway_review._discover_pair_paths(base_dir) == [(case_path, proc_path)]
 
 
 def test_build_airway_review_dataframe_from_supervised_pair(tmp_path):

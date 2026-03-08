@@ -16,7 +16,7 @@ class _StubPredictor:
     def __init__(self) -> None:
         """
         Initialize the stub predictor and prepare storage for recorded service lists.
-        
+
         Attributes:
             services_list (list | None): The services_list provided to predict_with_confidence_many; initially None.
         """
@@ -31,13 +31,13 @@ class _StubPredictor:
     ) -> tuple[list[str], list[float]]:
         """
         Stubbed prediction method used by tests; records the provided service inputs and returns two fixed category predictions with corresponding confidence scores.
-        
+
         Parameters:
             procedure_texts (list[str]): Ignored by this stub; present for API compatibility.
             services_list (list[list[str]] | None): Service token lists for each procedure; stored on the instance as `services_list`.
             rule_categories (list[str] | None): Ignored by this stub; present for API compatibility.
             rule_warning_counts (list[int] | None): Ignored by this stub; present for API compatibility.
-        
+
         Returns:
             tuple[list[str], list[float]]: A tuple where the first element is the list of category values
             ["CARDIAC_WITH_CPB", "OTHER"] and the second element is the list of confidence scores [0.95, 0.62].
@@ -59,11 +59,11 @@ class _StubHybridClassifier:
     def __init__(self, ml_predictor, ml_threshold) -> None:
         """
         Create a hybrid-classifier test stub instance and register it.
-        
+
         Parameters:
             ml_predictor: The mock or real ML predictor used by the hybrid classifier.
             ml_threshold: Threshold score at which the ML predictor's decision is accepted.
-        
+
         Notes:
             - Initializes `services_list` to None.
             - Appends the created instance to the class-level `created` list.
@@ -80,11 +80,11 @@ class _StubHybridClassifier:
     ) -> list[dict[str, object]]:
         """
         Record the provided services list and return two fixed classification entries for testing.
-        
+
         Parameters:
             procedure_texts (list[str]): Ignored; present to match the classifier interface.
             services_list (list[list[str]] | None): Services extracted per case; stored on the instance as `self.services_list`.
-        
+
         Returns:
             list[dict[str, object]]: Two dictionaries with a "category" key containing ProcedureCategory.CARDIAC_WITH_CPB and ProcedureCategory.INTRATHORACIC_NON_CARDIAC, respectively.
         """
@@ -109,6 +109,7 @@ def test_build_service_inputs_normalizes_sentinel_service_values():
             pd.NA,
             "  <NA>  ",
             "nan",
+            "ProcedureCategory.CARDIAC_WITH_CPB",
         ]
     })
 
@@ -118,7 +119,14 @@ def test_build_service_inputs_normalizes_sentinel_service_values():
         total_cases=len(df),
     )
 
-    assert ml_inputs == [["CARDIAC", "THOR"], [], [], [], []]
+    assert ml_inputs == [
+        ["CARDIAC", "THOR"],
+        [],
+        [],
+        [],
+        [],
+        ["ProcedureCategory.CARDIAC_WITH_CPB"],
+    ]
     assert service_rows == ml_inputs
 
 
@@ -128,7 +136,7 @@ def test_evaluate_model_handles_unclassified_hybrid_results(
 ):
     """
     Verify evaluate.evaluate_model handles hybrid classifier entries with a None category by treating them as unclassified and including them in accuracy calculations.
-    
+
     Creates a CSV with two cases, stubs an ML predictor and a hybrid classifier that returns `None` for the second case, runs `evaluate_model`, and asserts that `labeled_accuracy.hybrid_accuracy` equals 0.5 and the hybrid prediction for the unclassified case is "UNCLASSIFIED".
     """
     csv_path = tmp_path / "review.csv"
@@ -155,11 +163,11 @@ def test_evaluate_model_handles_unclassified_hybrid_results(
         ) -> list[dict[str, object]]:
             """
             Classify a batch of procedure texts and store the supplied services_list on the instance (test stub).
-            
+
             Parameters:
                 procedure_texts (list[str]): Ignored in this stub implementation; present for API compatibility.
                 services_list (list[list[str]] | None): Per-case service token lists; stored on the instance as `self.services_list`.
-            
+
             Returns:
                 list[dict[str, object]]: A list of classification result dicts with a "category" key. For this stub the first entry has
                 `ProcedureCategory.CARDIAC_WITH_CPB` and the second entry has `None`.
@@ -191,7 +199,7 @@ def test_evaluate_model_reports_labeled_rule_ml_and_hybrid_accuracy(
 ):
     """
     Validates that evaluate.evaluate_model reports labeled, rule, ML, and hybrid accuracies correctly using stubbed predictor and hybrid classifier.
-    
+
     Creates a CSV with two procedure records and human labels, patches the MLPredictor loader to return a stub predictor and replaces HybridClassifier with a stub implementation, runs evaluate.evaluate_model with a hybrid threshold of 0.6, and asserts that:
     - the labeled accuracy summary exists and references the correct label column and case count,
     - rule, ML, and hybrid accuracies match expected values (approximately 1.0, 0.5, and 1.0 respectively),
@@ -222,10 +230,10 @@ def test_evaluate_model_reports_labeled_rule_ml_and_hybrid_accuracy(
     def fake_load(_path):
         """
         Increment the test load counter and return the stub predictor.
-        
+
         Parameters:
             _path: Ignored path argument provided by the loader; not used.
-        
+
         Returns:
             The `predictor` stub instance.
         """
@@ -255,3 +263,45 @@ def test_evaluate_model_reports_labeled_rule_ml_and_hybrid_accuracy(
     assert predictor.services_list == [["CARDIAC"], ["THOR"]]
     assert _StubHybridClassifier.created[0].services_list == [["CARDIAC"], ["THOR"]]
     assert len(summary.disagreement_cases) == 1
+
+
+def test_main_returns_clean_error_code_for_value_error(
+    tmp_path,
+    monkeypatch,
+):
+    model_path = tmp_path / "model.pkl"
+    data_path = tmp_path / "data.csv"
+    model_path.write_text("model", encoding="utf-8")
+    data_path.write_text("procedure\nCABG\n", encoding="utf-8")
+
+    class _FakeParser:
+        def parse_args(self):
+            return type(
+                "Args",
+                (),
+                {
+                    "model": model_path,
+                    "data": data_path,
+                    "label_column": "missing_label",
+                    "hybrid_threshold": evaluate.DEFAULT_ML_THRESHOLD,
+                },
+            )()
+
+    printed: list[str] = []
+
+    monkeypatch.setattr(evaluate, "build_parser", _FakeParser)
+    monkeypatch.setattr(
+        evaluate,
+        "evaluate_model",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ValueError("Label column not found: missing_label")
+        ),
+    )
+    monkeypatch.setattr(
+        evaluate.console, "print", lambda message: printed.append(str(message))
+    )
+
+    assert evaluate.main() == 1
+    assert any(
+        "Label column not found: missing_label" in message for message in printed
+    )

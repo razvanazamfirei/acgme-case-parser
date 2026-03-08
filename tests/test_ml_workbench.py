@@ -24,12 +24,12 @@ def test_evaluate_command_uses_defaults_for_optional_eval_args(tmp_path, monkeyp
     def fake_run_script_stage(_name, _script_path, argv):
         """
         Act as a test double for running a script stage: capture the argv list and indicate successful execution.
-        
+
         Parameters:
             _name: Ignored.
             _script_path: Ignored.
             argv: The argument list passed to the script; stored in captured["argv"].
-        
+
         Returns:
             int: Exit code `0` indicating success.
         """
@@ -64,10 +64,10 @@ def test_run_command_chain_builds_complete_eval_args(tmp_path, monkeypatch):
     def fake_evaluate_command(eval_args: argparse.Namespace) -> int:
         """
         Capture evaluation command arguments into the test's captured dictionary.
-        
+
         Parameters:
             eval_args (argparse.Namespace): The evaluation command arguments to capture.
-        
+
         Returns:
             int: `0` to indicate successful capture.
         """
@@ -119,10 +119,10 @@ def test_retrain_command_builds_complete_eval_args(monkeypatch):
     def fake_evaluate_command(eval_args: argparse.Namespace) -> int:
         """
         Capture evaluation command arguments into the test's captured dictionary.
-        
+
         Parameters:
             eval_args (argparse.Namespace): The evaluation command arguments to capture.
-        
+
         Returns:
             int: `0` to indicate successful capture.
         """
@@ -166,10 +166,10 @@ def test_run_command_chain_forwards_explicit_eval_label_column(
     def fake_evaluate_command(eval_args: argparse.Namespace) -> int:
         """
         Capture evaluation command arguments into the test's captured dictionary.
-        
+
         Parameters:
             eval_args (argparse.Namespace): The evaluation command arguments to capture.
-        
+
         Returns:
             int: `0` to indicate successful capture.
         """
@@ -227,10 +227,10 @@ def test_run_command_chain_forwards_explicit_hybrid_threshold(
     def fake_evaluate_command(eval_args: argparse.Namespace) -> int:
         """
         Capture evaluation command arguments into the test's captured dictionary.
-        
+
         Parameters:
             eval_args (argparse.Namespace): The evaluation command arguments to capture.
-        
+
         Returns:
             int: `0` to indicate successful capture.
         """

@@ -87,9 +87,7 @@ class ExcelWriteOptions:
 # ---------------------------------------------------------------------------
 
 
-def read_excel(
-    file_path: str | Path, sheet_name: str | int | None = 0
-) -> DataFrame:
+def read_excel(file_path: str | Path, sheet_name: str | int | None = 0) -> DataFrame:
     """Read an Excel file and return a DataFrame.
 
     Args:

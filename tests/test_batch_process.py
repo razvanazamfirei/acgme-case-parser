@@ -41,7 +41,7 @@ def test_get_worker_processor_caches_per_column_map(monkeypatch):
         ) -> None:
             """
             Initialize the dummy processor and record the provided ColumnMap.
-            
+
             Parameters:
                 columns (batch_process.ColumnMap): Column mapping for this processor; appended to the module-level created_columns list.
                 default_year (int): Default year used by the processor.

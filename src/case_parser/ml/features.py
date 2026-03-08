@@ -114,21 +114,27 @@ class FeatureExtractor:
         unique_procedures, inverse_indices = self._dedupe_preserve_order(procedures)
         version = getattr(self, "feature_version", 1)
         if version <= 1:
-            unique_features = np.array([
-                self._extract_structured_single_v1_cached(item.procedure_text)
-                for item in unique_procedures
-            ], dtype=self._FEATURE_DTYPE)
+            unique_features = np.array(
+                [
+                    self._extract_structured_single_v1_cached(item.procedure_text)
+                    for item in unique_procedures
+                ],
+                dtype=self._FEATURE_DTYPE,
+            )
             return unique_features[inverse_indices]
 
-        unique_features = np.array([
-            self._extract_structured_single_v2_cached(
-                item.procedure_text,
-                item.service_text,
-                item.rule_category,
-                int(item.rule_warning_count),
-            )
-            for item in unique_procedures
-        ], dtype=self._FEATURE_DTYPE)
+        unique_features = np.array(
+            [
+                self._extract_structured_single_v2_cached(
+                    item.procedure_text,
+                    item.service_text,
+                    item.rule_category,
+                    int(item.rule_warning_count),
+                )
+                for item in unique_procedures
+            ],
+            dtype=self._FEATURE_DTYPE,
+        )
         return unique_features[inverse_indices]
 
     @staticmethod
@@ -267,9 +273,7 @@ class FeatureExtractor:
             ),
             float(any(term in proc_upper for term in BRONCHOSCOPY_FEATURE_KEYWORDS)),
             float(any(term in proc_upper for term in NEURAXIAL_FEATURE_KEYWORDS)),
-            float(
-                any(term in service_upper for term in CARDIAC_SERVICE_HINT_KEYWORDS)
-            ),
+            float(any(term in service_upper for term in CARDIAC_SERVICE_HINT_KEYWORDS)),
             float(any(term in service_upper for term in NEURO_SERVICE_HINT_KEYWORDS)),
             float(
                 any(term in service_upper for term in THORACIC_SERVICE_RULE_KEYWORDS)

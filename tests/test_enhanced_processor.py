@@ -694,9 +694,7 @@ class TestRowProcessing:
             for warning in case.parsing_warnings
         )
 
-    def test_process_row_infers_mac_from_sedation_note_without_airway(
-        self, processor
-    ):
+    def test_process_row_infers_mac_from_sedation_note_without_airway(self, processor):
         """Sedation note text should infer MAC when airway is absent."""
         row = pd.Series({
             "Date": "08/27/2025",
@@ -1092,7 +1090,9 @@ class TestProcessDataframeExtended:
         cases = processor.process_dataframe(df)
 
         assert cases[0].case_date == date(2025, 8, 27)
-        assert not any("default year" in warning for warning in cases[0].parsing_warnings)
+        assert not any(
+            "default year" in warning for warning in cases[0].parsing_warnings
+        )
 
         assert cases[1].case_date == date(2025, 1, 1)
         assert any("default year" in warning for warning in cases[1].parsing_warnings)

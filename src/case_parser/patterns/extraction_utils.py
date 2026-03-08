@@ -105,9 +105,7 @@ def calculate_pattern_confidence(
 
     if negation_patterns:
         negation_matches = sum(
-            1
-            for pattern in negation_patterns
-            if _coerce_pattern(pattern).search(text)
+            1 for pattern in negation_patterns if _coerce_pattern(pattern).search(text)
         )
         confidence -= negation_matches * 0.3
 

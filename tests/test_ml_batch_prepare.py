@@ -16,7 +16,7 @@ def test_process_single_file_uses_exported_service_text_for_rule_categorization(
     pd.DataFrame([
         {
             "AIMS_Actual_Procedure_Text": "CABG",
-            "service_text": "CARDIAC\nTHOR",
+            "service_text": " CARDIAC \n  THOR  ",
         }
     ]).to_csv(csv_path, index=False)
 
@@ -25,11 +25,11 @@ def test_process_single_file_uses_exported_service_text_for_rule_categorization(
     def fake_categorize_procedure(procedure, services):
         """
         Test helper that records the provided procedure and services, and returns a fixed cardiac category with no additional data.
-        
+
         Parameters:
             procedure: The procedure text passed for categorization; recorded in the outer `captured` dict under "procedure".
             services: The list of service strings passed for categorization; recorded in the outer `captured` dict under "services".
-        
+
         Returns:
             tuple: (`ProcedureCategory.CARDIAC_WITH_CPB`, `[]`)
         """
@@ -50,7 +50,7 @@ def test_process_single_file_uses_exported_service_text_for_rule_categorization(
         "procedure": "CABG",
         "services": ["CARDIAC", "THOR"],
     }
-    assert result["cases"][0]["service_text"] == "CARDIAC\nTHOR"
+    assert result["cases"][0]["service_text"] == "CARDIAC \n  THOR"
     assert result["cases"][0]["rule_category"] == (
         ProcedureCategory.CARDIAC_WITH_CPB.value
     )
