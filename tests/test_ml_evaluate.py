@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pandas as pd
 import pytest
@@ -34,8 +35,13 @@ class _StubPredictor:
 
 
 class _StubHybridClassifier:
-    def __init__(self) -> None:
+    created: ClassVar[list[_StubHybridClassifier]] = []
+
+    def __init__(self, ml_predictor, ml_threshold) -> None:
+        self.ml_predictor = ml_predictor
+        self.ml_threshold = ml_threshold
         self.services_list = None
+        type(self).created.append(self)
 
     def classify_many(
         self,
@@ -69,14 +75,16 @@ def test_evaluate_model_reports_labeled_rule_ml_and_hybrid_accuracy(
     ]).to_csv(csv_path, index=False)
 
     predictor = _StubPredictor()
-    hybrid = _StubHybridClassifier()
+    _StubHybridClassifier.created.clear()
 
-    monkeypatch.setattr(evaluate.MLPredictor, "load", lambda _path: predictor)
-    monkeypatch.setattr(
-        evaluate.HybridClassifier,
-        "load",
-        lambda _path, ml_threshold: hybrid,
-    )
+    load_calls = {"count": 0}
+
+    def fake_load(_path):
+        load_calls["count"] += 1
+        return predictor
+
+    monkeypatch.setattr(evaluate.MLPredictor, "load", fake_load)
+    monkeypatch.setattr(evaluate, "HybridClassifier", _StubHybridClassifier)
 
     summary = evaluate.evaluate_model(
         Path("ml_models/procedure_classifier.pkl"),
@@ -91,6 +99,10 @@ def test_evaluate_model_reports_labeled_rule_ml_and_hybrid_accuracy(
     assert summary.labeled_accuracy.rule_accuracy == pytest.approx(1.0)
     assert summary.labeled_accuracy.ml_accuracy == pytest.approx(0.5)
     assert summary.labeled_accuracy.hybrid_accuracy == pytest.approx(1.0)
+    assert load_calls["count"] == 1
+    assert len(_StubHybridClassifier.created) == 1
+    assert _StubHybridClassifier.created[0].ml_predictor is predictor
+    assert _StubHybridClassifier.created[0].ml_threshold == pytest.approx(0.6)
     assert predictor.services_list == [["CARDIAC"], ["THOR"]]
-    assert hybrid.services_list == [["CARDIAC"], ["THOR"]]
+    assert _StubHybridClassifier.created[0].services_list == [["CARDIAC"], ["THOR"]]
     assert len(summary.disagreement_cases) == 1

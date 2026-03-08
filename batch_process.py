@@ -209,10 +209,18 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Number of parallel workers for resident processing (default: 4)",
     )
+    parser.set_defaults(use_ml=True)
     parser.add_argument(
         "--use-ml",
+        dest="use_ml",
         action="store_true",
-        help="Enable ML-enhanced procedure categorization (slower)",
+        help="Enable ML-enhanced procedure categorization (default)",
+    )
+    parser.add_argument(
+        "--no-ml",
+        dest="use_ml",
+        action="store_false",
+        help="Disable ML-enhanced procedure categorization and use rules only",
     )
     args = parser.parse_args()
     if args.workers < 1:

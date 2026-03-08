@@ -210,9 +210,7 @@ class TestAirwayManagementExtraction:
 
         assert AirwayManagement.DOUBLE_LUMEN_ETT in airway
         assert AirwayManagement.ORAL_ETT in airway
-        assert any(
-            f.value == AirwayManagement.DOUBLE_LUMEN_ETT.value for f in findings
-        )
+        assert any(f.value == AirwayManagement.DOUBLE_LUMEN_ETT.value for f in findings)
 
     def test_extract_direct_laryngoscope(self):
         """Test direct laryngoscope extraction."""
@@ -292,8 +290,6 @@ class TestAirwayManagementExtraction:
         airway1, findings1 = extract_airway_management(None)
         assert airway1 == []
         assert findings1 == []
-
-        import pandas as pd
 
         airway2, findings2 = extract_airway_management(pd.NA)
         assert airway2 == []

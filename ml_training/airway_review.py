@@ -128,7 +128,7 @@ class CaseAssessment:
 def _stable_fraction(text: str) -> float:
     """Return a deterministic pseudo-random fraction in [0, 1)."""
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return int(digest[:8], 16) / 0xFFFFFFFF
+    return int(digest[:8], 16) / 0x100000000
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
@@ -156,26 +156,43 @@ def _combined_case_text(case: ParsedCase) -> str:
 
 def _review_bucket_limits(max_cases: int) -> dict[str, int]:
     """Return default bucket quotas for a review run."""
-    base = {
-        "double_lumen": int(max_cases * 0.3),
-        "tube_route": int(max_cases * 0.3),
-        "ga_mac": int(max_cases * 0.3),
+    limits = dict.fromkeys(BUCKET_ORDER, 0)
+    if max_cases <= 0:
+        return limits
+
+    if max_cases >= len(BUCKET_ORDER):
+        for bucket in BUCKET_ORDER:
+            limits[bucket] = 1
+        remaining = max_cases - len(BUCKET_ORDER)
+    else:
+        remaining = max_cases
+
+    weights = {
+        "double_lumen": 0.3,
+        "tube_route": 0.3,
+        "ga_mac": 0.3,
+        "control": 0.1,
     }
-    assigned = sum(base.values())
-    base["control"] = max_cases - assigned
+    exact_extras = {
+        bucket: remaining * weights[bucket] for bucket in BUCKET_ORDER
+    }
+
     for bucket in BUCKET_ORDER:
-        if base[bucket] == 0 and max_cases > 0:
-            base[bucket] = 1
-    overflow = sum(base.values()) - max_cases
-    idx = len(BUCKET_ORDER) - 1
-    while overflow > 0 and idx >= 0:
-        bucket = BUCKET_ORDER[idx]
-        if base[bucket] > 1:
-            base[bucket] -= 1
-            overflow -= 1
-        else:
-            idx -= 1
-    return base
+        extra = int(exact_extras[bucket])
+        limits[bucket] += extra
+        remaining -= extra
+
+    bucket_priority = sorted(
+        BUCKET_ORDER,
+        key=lambda bucket: (
+            -(exact_extras[bucket] - int(exact_extras[bucket])),
+            BUCKET_ORDER.index(bucket),
+        ),
+    )
+    for bucket in bucket_priority[:remaining]:
+        limits[bucket] += 1
+
+    return limits
 
 
 def assess_case_for_review(  # noqa: PLR0912, PLR0915

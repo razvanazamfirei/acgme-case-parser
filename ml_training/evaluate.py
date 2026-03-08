@@ -191,8 +191,8 @@ def evaluate_model(  # noqa: PLR0914
     )
     hybrid_results: list[ClassificationResult] = []
     if resolved_label_column is not None:
-        hybrid_results = HybridClassifier.load(
-            model_path,
+        hybrid_results = HybridClassifier(
+            predictor,
             ml_threshold=hybrid_threshold,
         ).classify_many(procedures, service_rows)
         normalized_labels = [

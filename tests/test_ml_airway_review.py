@@ -16,30 +16,29 @@ from ml_training import airway_review
 
 
 def _parsed_case(**overrides) -> ParsedCase:
-    base = {
-        "raw_date": "2025-01-01",
-        "episode_id": "CASE-1",
-        "raw_age": 55.0,
-        "raw_asa": "3",
-        "emergent": False,
-        "raw_anesthesia_type": "Intubation routine",
-        "services": ["THORACIC"],
-        "procedure": "VATS lobectomy",
-        "procedure_notes": "Left double lumen tube placed",
-        "responsible_provider": "SMITH, JANE",
-        "case_date": date(2025, 1, 1),
-        "anesthesia_type": AnesthesiaType.GENERAL,
-        "procedure_category": ProcedureCategory.INTRATHORACIC_NON_CARDIAC,
-        "airway_management": [
+    base = ParsedCase(
+        raw_date="2025-01-01",
+        episode_id="CASE-1",
+        raw_age=55.0,
+        raw_asa="3",
+        emergent=False,
+        raw_anesthesia_type="Intubation routine",
+        services=["THORACIC"],
+        procedure="VATS lobectomy",
+        procedure_notes="Left double lumen tube placed",
+        responsible_provider="SMITH, JANE",
+        case_date=date(2025, 1, 1),
+        anesthesia_type=AnesthesiaType.GENERAL,
+        procedure_category=ProcedureCategory.INTRATHORACIC_NON_CARDIAC,
+        airway_management=[
             AirwayManagement.DOUBLE_LUMEN_ETT,
             AirwayManagement.ORAL_ETT,
         ],
-        "parsing_warnings": [
+        parsing_warnings=[
             "Inferred general anesthesia from airway management findings"
         ],
-    }
-    base.update(overrides)
-    return ParsedCase(**base)
+    )
+    return base.model_copy(update=overrides)
 
 
 def test_assess_case_for_review_scores_all_requested_targets():
@@ -103,6 +102,28 @@ def test_assess_case_for_review_does_not_use_generic_lobectomy_as_thoracic():
     assert "thoracic_procedure_hint" not in assessment.review_reasons
 
 
+def test_stable_fraction_is_strictly_less_than_one(monkeypatch):
+    class _FakeHash:
+        def hexdigest(self) -> str:
+            return "ffffffff" + ("0" * 56)
+
+    monkeypatch.setattr(airway_review.hashlib, "sha256", lambda _value: _FakeHash())
+
+    assert airway_review._stable_fraction("case-key") < 1.0
+
+
+def test_review_bucket_limits_sum_to_max_cases():
+    limits = airway_review._review_bucket_limits(1)
+
+    assert sum(limits.values()) == 1
+    assert limits == {
+        "double_lumen": 1,
+        "tube_route": 0,
+        "ga_mac": 0,
+        "control": 0,
+    }
+
+
 def test_build_airway_review_dataframe_from_supervised_pair(tmp_path):
     base_dir = tmp_path / "Output-Supervised"
     case_dir = base_dir / "case-list"
@@ -136,5 +157,6 @@ def test_build_airway_review_dataframe_from_supervised_pair(tmp_path):
     assert len(df) == 1
     assert df.loc[0, "predicted_has_double_lumen_tube"] == "Yes"
     assert df.loc[0, "predicted_tube_route"] == "Oral"
-    assert "double_lumen" in df.loc[0, "review_targets"]
+    review_targets = str(df.loc[0, "review_targets"])
+    assert "double_lumen" in review_targets
     assert df.loc[0, "label_has_double_lumen_tube"] == ""

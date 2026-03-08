@@ -22,7 +22,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from case_parser.ml.inputs import resolve_service_column
+from case_parser.ml.inputs import coerce_service_text, resolve_service_column
 from case_parser.patterns.categorization import categorize_procedure
 
 console = Console()
@@ -53,13 +53,19 @@ def process_single_file(
             if not procedure or procedure == "nan":
                 continue
 
-            category, warnings = categorize_procedure(procedure, [])
+            service_text = (
+                ""
+                if service_column is None
+                else coerce_service_text(row.get(service_column, ""))
+            )
+            category, warnings = categorize_procedure(
+                procedure,
+                [item for item in service_text.split("\n") if item],
+            )
             cases.append({
                 "file": file_path.name,
                 "procedure": procedure,
-                "service_text": ""
-                if service_column is None
-                else str(row.get(service_column, "") or ""),
+                "service_text": service_text,
                 "rule_category": category,
                 "warnings": "; ".join(warnings) if warnings else "",
                 "age": row.get("AIMS_Patient_Age_Years"),

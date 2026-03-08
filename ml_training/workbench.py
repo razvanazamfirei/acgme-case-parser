@@ -1101,10 +1101,8 @@ def _run_review_interface(
 
     try:
         return _run_tui_review_session(queue, runtime)
-    except RuntimeError as exc:
-        console.print(
-            f"[yellow]TUI initialization failed ({exc}); using classic mode.[/yellow]"
-        )
+    except RuntimeError as exception:
+        console.print(f"[yellow]TUI initialization failed ({exception}).[/yellow]")
         return _run_review_classic(queue, runtime)
 
 
@@ -1408,8 +1406,8 @@ def _retrain_command(args: argparse.Namespace) -> int:
     """
     try:
         summary = _prepare_override_retrain_datasets(args)
-    except (RuntimeError, ValueError) as exc:
-        console.print(f"[red]{exc}[/red]")
+    except (RuntimeError, ValueError) as exception:
+        console.print(f"[red]{exception}[/red]")
         return 1
 
     _print_retrain_merge_summary(args, summary)
@@ -1438,7 +1436,7 @@ def _retrain_command(args: argparse.Namespace) -> int:
         )
         return 0
 
-    eval_args = argparse.Namespace(model=args.model, data=args.eval_data_output)
+    eval_args = _build_eval_args(args, data=args.eval_data_output)
     return _evaluate_command(eval_args)
 
 
@@ -1508,14 +1506,16 @@ def _evaluate_command(args: argparse.Namespace) -> int:
     if args.data is None:
         console.print(f"[cyan]Using default evaluation data:[/cyan] {data_path}")
 
+    label_column = getattr(args, "label_column", None)
+    hybrid_threshold = getattr(args, "hybrid_threshold", DEFAULT_ML_THRESHOLD)
     script_path = PROJECT_ROOT / "ml_training" / "evaluate.py"
     argv = [
         str(Path(args.model).resolve()),
         str(data_path),
     ]
-    if args.label_column is not None:
-        argv.extend(["--label-column", args.label_column])
-    argv.extend(["--hybrid-threshold", str(args.hybrid_threshold)])
+    if label_column is not None:
+        argv.extend(["--label-column", label_column])
+    argv.extend(["--hybrid-threshold", str(hybrid_threshold)])
     return _run_script_stage("Evaluation", script_path, argv)
 
 
@@ -1525,6 +1525,20 @@ def _resolve_eval_data_for_run(args: argparse.Namespace) -> Path:
     if args.skip_split:
         return Path(args.prepared_data).resolve()
     return Path(args.unseen_data).resolve()
+
+
+def _build_eval_args(
+    args: argparse.Namespace,
+    *,
+    data: str | Path | None,
+) -> argparse.Namespace:
+    """Build a complete Namespace for the evaluation command."""
+    return argparse.Namespace(
+        model=args.model,
+        data=data,
+        label_column=getattr(args, "label_column", None),
+        hybrid_threshold=getattr(args, "hybrid_threshold", DEFAULT_ML_THRESHOLD),
+    )
 
 
 def _print_next_review_step(model_path: Path, data_path: Path) -> None:
@@ -1561,7 +1575,7 @@ def _run_command_chain(args: argparse.Namespace) -> int:
         return 0
 
     eval_data = _resolve_eval_data_for_run(args)
-    eval_args = argparse.Namespace(model=args.model, data=eval_data)
+    eval_args = _build_eval_args(args, data=eval_data)
     eval_rc = _evaluate_command(eval_args)
     if eval_rc != 0:
         return eval_rc
