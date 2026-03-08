@@ -22,6 +22,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from case_parser.ml.inputs import coerce_service_text, resolve_service_column
 from case_parser.patterns.categorization import categorize_procedure
 
 console = Console()
@@ -30,18 +31,10 @@ console = Console()
 def process_single_file(
     file_path: Path, sample_size: int | None = None
 ) -> dict[str, Any]:
-    """Process a single CSV file and extract cases with rule-based categorization.
-
-    Args:
-        file_path: Path to the CSV file to process.
-        sample_size: Optional maximum number of rows to sample from the file.
-
-    Returns:
-        Dict with keys "file", "total_rows", "valid_cases", and "cases" on
-        success, or "file" and "error" on failure.
-    """
+    """Extract rule-categorized cases from one CSV file."""
     try:
         df = pd.read_csv(file_path)
+        service_column = resolve_service_column(df)
         if sample_size and len(df) > sample_size:
             df = df.sample(n=sample_size, random_state=42)
 
@@ -51,11 +44,22 @@ def process_single_file(
             if not procedure or procedure == "nan":
                 continue
 
-            category, warnings = categorize_procedure(procedure, [])
+            service_text = (
+                ""
+                if service_column is None
+                else coerce_service_text(row.get(service_column, ""))
+            )
+            category, warnings = categorize_procedure(
+                procedure,
+                [item.strip() for item in service_text.split("\n") if item.strip()],
+            )
             cases.append({
                 "file": file_path.name,
                 "procedure": procedure,
-                "rule_category": category,
+                "service_text": service_text,
+                "rule_category": (
+                    category.value if category is not None else "Other (procedure cat)"
+                ),
                 "warnings": "; ".join(warnings) if warnings else "",
                 "age": row.get("AIMS_Patient_Age_Years"),
                 "asa": row.get("ASA_Status"),

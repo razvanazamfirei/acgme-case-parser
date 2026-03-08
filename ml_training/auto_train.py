@@ -133,9 +133,7 @@ def split_prepared_dataset(config: SplitConfig) -> tuple[int, int]:
     train_n = n - test_n
     min_count = int(counts.min())
     stratify_labels = (
-        normalized_labels
-        if min_count >= 2 and test_n >= k and train_n >= k
-        else None
+        normalized_labels if min_count >= 2 and test_n >= k and train_n >= k else None
     )
     if stratify_labels is None:
         console.print(
@@ -296,8 +294,10 @@ def _validate_inputs(args: argparse.Namespace) -> None:
         )
 
     unseen_data = getattr(args, "unseen_data", None)
-    if not args.skip_evaluate and args.skip_split and (
-        unseen_data is None or not unseen_data.exists()
+    if (
+        not args.skip_evaluate
+        and args.skip_split
+        and (unseen_data is None or not unseen_data.exists())
     ):
         raise PipelineError(
             "Unseen holdout data not found for evaluation. "

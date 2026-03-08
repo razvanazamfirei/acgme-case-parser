@@ -959,9 +959,7 @@ class CaseProcessor:
 
         rows = df.to_dict(orient="records")
         try:
-            prepared_rows: list[_PreparedRow | None] = [
-                *self._prepare_rows(rows)
-            ]
+            prepared_rows: list[_PreparedRow | None] = [*self._prepare_rows(rows)]
         except Exception as e:
             logger.exception(
                 "Batch row preparation failed; falling back to per-row processing: %s",

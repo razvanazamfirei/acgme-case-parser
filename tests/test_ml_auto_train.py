@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
+# noinspection PyProtectedMember
 from ml_training.auto_train import (
     PipelineError,
     SplitConfig,

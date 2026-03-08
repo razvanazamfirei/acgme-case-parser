@@ -10,6 +10,8 @@ from case_parser.patterns.approach_patterns import (
     detect_approach,
     detect_intracerebral_pathology,
 )
+
+# noinspection PyProtectedMember
 from case_parser.patterns.categorization import (
     _apply_rule_category,
     _fallback_categories_from_text,
@@ -280,9 +282,15 @@ class TestCategorizeProcedure:
 
 
 def test_normalize_services_skips_null_and_string_sentinels():
-    assert _normalize_services(["cardiac", None, np.nan, pd.NA, "nan", "None", "<NA>"]) == (
-        "CARDIAC",
-    )
+    assert _normalize_services([
+        "cardiac",
+        None,
+        np.nan,
+        pd.NA,
+        "nan",
+        "None",
+        "<NA>",
+    ]) == ("CARDIAC",)
 
 
 def test_normalize_services_treats_raw_string_as_single_token():

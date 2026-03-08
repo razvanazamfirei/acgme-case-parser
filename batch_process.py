@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import os
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import warnings
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,20 +31,20 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 
-from src.case_parser.io import (
+from case_parser.io import (
     CsvHandler,
     ExcelHandler,
     ExcelWriteOptions,
     join_case_and_procedures,
 )
-from src.case_parser.models import (
+from case_parser.models import (
     FORMAT_TYPE_CASELOG,
     FORMAT_TYPE_STANDALONE,
     OUTPUT_FORMAT_VERSION,
     STANDALONE_OUTPUT_FORMAT_VERSION,
     ColumnMap,
 )
-from src.case_parser.processor import CaseProcessor
+from case_parser.processor import CaseProcessor
 
 # Suppress noisy logging from the pipeline
 logging.getLogger("case_parser").setLevel(logging.WARNING)
@@ -50,12 +52,35 @@ logging.getLogger("case_parser").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 console = Console()
 
+_WORKER_PROCESSORS: dict[tuple[int, bool, ColumnMap], CaseProcessor] = {}
+_SKLEARN_DELAYED_WARNING_PATTERN = r".*sklearn\.utils\.parallel\.delayed.*"
+
 
 @dataclass(frozen=True)
 class ProcessConfig:
     output_dir: Path
     columns: ColumnMap
     excel_handler: ExcelHandler
+    use_ml: bool
+
+
+def _suppress_sklearn_parallel_warning() -> None:
+    """Suppress noisy sklearn delayed/Parallel warning during batch runs."""
+    warnings.filterwarnings(
+        "ignore",
+        message=_SKLEARN_DELAYED_WARNING_PATTERN,
+        category=UserWarning,
+    )
+
+
+def _get_worker_processor(columns: ColumnMap, use_ml: bool) -> CaseProcessor:
+    """Return the cached processor for this process, column map, and ML mode."""
+    cache_key = (os.getpid(), use_ml, columns)
+    cached = _WORKER_PROCESSORS.get(cache_key)
+    if cached is None:
+        cached = CaseProcessor(columns, default_year=2025, use_ml=use_ml)
+        _WORKER_PROCESSORS[cache_key] = cached
+    return cached
 
 
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -101,23 +126,10 @@ def process_resident(
     pairs: tuple[str, Path, Path],
     config: ProcessConfig,
 ) -> tuple[int, tuple[str, int, str] | None]:
-    """Process one resident's files and write output Excel.
-
-    Creates its own ``CaseProcessor`` so this function is safe to run in a
-    worker process (no shared ML-model state between workers).
-
-    Args:
-        pairs: Tuple of (name, case_file, proc_file) where name is the resident
-            identifier (``LAST_FIRST`` format), case_file is the path to the
-            CaseList CSV, and proc_file is the path to the ProcedureList CSV.
-        config: Shared processing configuration (output dir, column map, handlers).
-
-    Returns:
-        Tuple of (cases_written, orphan_notice) where orphan_notice is
-        ``(name, count, filename)`` when orphan procedures were found, else None.
-    """
+    """Process one resident pair and write case-log and orphan outputs."""
     name, case_file, proc_file = pairs
-    processor = CaseProcessor(config.columns, default_year=2025, use_ml=True)
+    _suppress_sklearn_parallel_warning()
+    processor = _get_worker_processor(config.columns, config.use_ml)
     formatted_name = format_name(name)
     joined, orphans = join_case_and_procedures(
         pd.read_csv(case_file),
@@ -162,7 +174,7 @@ def process_resident(
 
 
 def _parse_args() -> argparse.Namespace:
-    """Parse and validate command line arguments."""
+    """Parse and validate command-line options for batch processing."""
     parser = argparse.ArgumentParser(description="Batch process resident case files")
     parser.add_argument(
         "--base-dir",
@@ -182,6 +194,19 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=4,
         help="Number of parallel workers for resident processing (default: 4)",
+    )
+    parser.set_defaults(use_ml=True)
+    parser.add_argument(
+        "--use-ml",
+        dest="use_ml",
+        action="store_true",
+        help="Enable ML-enhanced procedure categorization (default)",
+    )
+    parser.add_argument(
+        "--no-ml",
+        dest="use_ml",
+        action="store_false",
+        help="Disable ML-enhanced procedure categorization and use rules only",
     )
     args = parser.parse_args()
     if args.workers < 1:
@@ -218,10 +243,11 @@ def _process_in_parallel(
     config: ProcessConfig,
     workers: int,
 ) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, str]]]:
-    """Run resident processing across worker processes."""
+    """Process resident file pairs in parallel and collect summary results."""
     total_cases = 0
     errors: list[tuple[str, str]] = []
     orphan_notices: list[tuple[str, int, str]] = []
+    executor_cls = ProcessPoolExecutor if config.use_ml else ThreadPoolExecutor
 
     with Progress(
         SpinnerColumn(),
@@ -234,9 +260,7 @@ def _process_in_parallel(
     ) as progress:
         task = progress.add_task("Processing residents", total=len(pairs))
 
-        # Parallel: each worker process gets its own Python interpreter and GIL,
-        # providing true CPU parallelism that threads cannot achieve.
-        with ProcessPoolExecutor(max_workers=workers) as executor:
+        with executor_cls(max_workers=workers) as executor:
             futures = {
                 executor.submit(process_resident, pair, config): pair[0]
                 for pair in pairs
@@ -257,6 +281,8 @@ def _process_in_parallel(
 
 
 def main() -> None:
+    """Run the batch resident-processing CLI."""
+    _suppress_sklearn_parallel_warning()
     args = _parse_args()
     output_dir: Path = args.output_dir
     case_dir, proc_dir = _validate_input_dirs(args.base_dir)
@@ -275,6 +301,7 @@ def main() -> None:
         output_dir=output_dir,
         columns=ColumnMap(),
         excel_handler=ExcelHandler(),
+        use_ml=args.use_ml,
     )
     total_cases, errors, orphan_notices = _process_in_parallel(
         pairs, config, args.workers

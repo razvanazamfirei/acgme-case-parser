@@ -23,6 +23,11 @@ from sklearn.model_selection import cross_val_score, train_test_split
 
 try:
     from case_parser.ml.features import FeatureExtractor
+    from case_parser.ml.inputs import (
+        FeatureInput,
+        build_feature_inputs,
+        resolve_service_column,
+    )
     from case_parser.ml.predictor import ProcedureMLPipeline
     from ml_training.utils import normalize_category_label
 except ImportError:
@@ -30,6 +35,11 @@ except ImportError:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from case_parser.ml.features import FeatureExtractor
+    from case_parser.ml.inputs import (
+        FeatureInput,
+        build_feature_inputs,
+        resolve_service_column,
+    )
     from case_parser.ml.predictor import ProcedureMLPipeline
     from ml_training.utils import normalize_category_label
 
@@ -51,6 +61,7 @@ class ArtifactMetadataInput:
     """Inputs needed to build persisted model metadata."""
 
     label_column: str
+    service_column: str | None
     labels: np.ndarray[Any, Any]
     train_samples: int
     validation_samples: int
@@ -76,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--label-column",
         default="category",
         help="Name of the label column (default: category)",
+    )
+    parser.add_argument(
+        "--service-column",
+        help="Optional service column to include in ML features",
     )
     parser.add_argument(
         "--val-split",
@@ -126,9 +141,20 @@ def _validate_required_columns(df: pd.DataFrame, label_column: str) -> bool:
 
 
 def _extract_training_arrays(
-    df: pd.DataFrame, label_column: str
-) -> tuple[list[str], np.ndarray[Any, Any]]:
-    features = df["procedure"].fillna("").astype(str).tolist()
+    df: pd.DataFrame,
+    label_column: str,
+    service_column: str | None,
+) -> tuple[list[FeatureInput], np.ndarray[Any, Any], str | None]:
+    """Build feature inputs, labels, and the resolved service column name."""
+    resolved_service_column = resolve_service_column(df, service_column)
+    if service_column is not None and resolved_service_column is None:
+        raise ValueError(f"Service column not found: {service_column}")
+    procedures = df["procedure"].fillna("").astype(str).tolist()
+    if resolved_service_column is not None:
+        services = df[resolved_service_column].fillna("").astype(str).tolist()
+    else:
+        services = ["" for _ in procedures]
+    features = build_feature_inputs(procedures, services_list=services)
     labels = (
         df[label_column]
         .fillna("Other (procedure cat)")
@@ -136,12 +162,13 @@ def _extract_training_arrays(
         .map(normalize_category_label)
         .to_numpy()
     )
-    return features, labels
+    return features, labels, resolved_service_column
 
 
 def _print_class_distribution(
     labels: np.ndarray[Any, Any],
 ) -> tuple[np.ndarray[Any, Any], pd.Series[Any]]:
+    """Print class counts and return unique labels with their counts."""
     unique_labels, counts = np.unique(labels, return_counts=True)
 
     dist_table = Table(title="Class Distribution", border_style="yellow")
@@ -174,8 +201,9 @@ def _resolve_stratify_labels(
 
 
 def _extract_feature_matrices(
-    x_train: list[str], x_val: list[str]
+    x_train: list[FeatureInput], x_val: list[FeatureInput]
 ) -> tuple[FeatureExtractor, Any, Any]:
+    """Fit the feature extractor and return train and validation matrices."""
     feature_extractor = FeatureExtractor()
     with Progress(console=console) as progress:
         task = progress.add_task("Extracting features...", total=1)
@@ -228,21 +256,12 @@ def _print_model_comparison(models: dict[str, tuple[Any, float]]) -> None:
 
 
 def train_ensemble_model(
-    x_train: list[str],
+    x_train: list[FeatureInput],
     y_train: np.ndarray[Any, Any],
-    x_val: list[str],
+    x_val: list[FeatureInput],
     y_val: np.ndarray[Any, Any],
 ) -> TrainArtifacts:
-    """Train candidate models and return the best performer.
-
-    Args:
-        x_train: Training feature matrix.
-        y_train: Training labels corresponding to ``x_train``.
-        x_val: Validation feature matrix.
-        y_val: Validation labels corresponding to ``x_val``.
-    Returns:
-        TrainArtifacts containing the best model, feature extractor, score, and name.
-    """
+    """Train candidate models and return the best-performing artifacts."""
     feature_extractor, x_train_features, x_val_features = _extract_feature_matrices(
         x_train,
         x_val,
@@ -270,7 +289,7 @@ def train_ensemble_model(
                 ("rf", trained_models["Random Forest"][0]),
             ],
             voting="soft",
-            n_jobs=-1,
+            n_jobs=1,
         )
         trained_models["Ensemble"] = _train_single_model(
             ensemble,
@@ -328,11 +347,12 @@ def _print_validation_metrics(
 
 def _maybe_run_cross_validation(
     artifacts: TrainArtifacts,
-    all_features: list[str],
+    all_features: list[FeatureInput],
     labels: np.ndarray[Any, Any],
     class_counts: pd.Series[Any],
     enabled: bool,
 ) -> None:
+    """Optionally run 5-fold cross-validation when class counts allow it."""
     if not enabled:
         return
 
@@ -357,6 +377,7 @@ def _save_model_artifact(
     artifacts: TrainArtifacts,
     metadata_input: ArtifactMetadataInput,
 ) -> None:
+    """Persist the trained pipeline and metadata to a pickle artifact."""
     pipeline = ProcedureMLPipeline(
         model=artifacts.model,
         features=artifacts.feature_extractor,
@@ -368,6 +389,9 @@ def _save_model_artifact(
         "validation_accuracy": float(artifacts.best_score),
         "model_type": artifacts.best_name,
         "label_column": metadata_input.label_column,
+        "service_column": metadata_input.service_column,
+        "feature_version": getattr(artifacts.feature_extractor, "feature_version", 1),
+        "uses_services": metadata_input.service_column is not None,
         "categories": sorted(set(metadata_input.labels.tolist())),
     }
 
@@ -378,11 +402,7 @@ def _save_model_artifact(
 
 
 def main() -> int:
-    """Train optimized ML model.
-
-    Returns:
-        0 on success, 1 if required columns are missing from the input dataset.
-    """
+    """Run the optimized training CLI."""
     args = build_parser().parse_args()
 
     _print_header(args.input, args.output)
@@ -391,7 +411,15 @@ def main() -> int:
     if not _validate_required_columns(df, args.label_column):
         return 1
 
-    x, y = _extract_training_arrays(df, args.label_column)
+    try:
+        x, y, resolved_service_column = _extract_training_arrays(
+            df,
+            args.label_column,
+            args.service_column,
+        )
+    except ValueError as exception:
+        console.print(f"[red]{exception}[/red]")
+        return 1
     unique_labels, class_counts = _print_class_distribution(y)
     stratify_labels = _resolve_stratify_labels(y, class_counts)
 
@@ -422,6 +450,7 @@ def main() -> int:
         artifacts=artifacts,
         metadata_input=ArtifactMetadataInput(
             label_column=args.label_column,
+            service_column=resolved_service_column,
             labels=y,
             train_samples=len(x_train),
             validation_samples=len(x_val),

@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
+# noinspection PyProtectedMember
 from case_parser.cli import (
     _ProcessingOptions,
     main,
@@ -210,5 +211,7 @@ def test_main_uses_standalone_signal_when_no_main_cases(tmp_path: Path):
         " ".join(str(arg) for arg in call.args) for call in console_print.call_args_list
     ]
     assert result is None
-    assert any("standalone orphan outputs were written" in msg for msg in printed_messages)
+    assert any(
+        "standalone orphan outputs were written" in msg for msg in printed_messages
+    )
     assert not any("No cases to process" in msg for msg in printed_messages)

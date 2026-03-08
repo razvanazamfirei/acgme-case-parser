@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from case_parser.domain import ProcedureCategory
+
+# noinspection PyProtectedMember
 from case_parser.ml.hybrid import HybridClassifier, _RuleContext
 
 

@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from case_parser.ml.config import DEFAULT_ML_THRESHOLD
 from case_parser.ml.predictor import MLPredictor
 from case_parser.patterns.categorization import categorize_procedure
 
@@ -73,6 +74,9 @@ DEFAULT_RETRAIN_DATA = (
 )
 DEFAULT_REMAINING_EVAL_DATA = (
     PROJECT_ROOT / "ml_training_data" / "unseen_eval_remaining.csv"
+)
+DEFAULT_AIRWAY_REVIEW_OUTPUT = (
+    PROJECT_ROOT / "ml_training_data" / "airway_review_candidates.csv"
 )
 OVERRIDE_CORRECTION_MULTIPLIER = 3
 
@@ -1091,15 +1095,32 @@ def _run_review_interface(
     queue: list[ReviewCase],
     runtime: ReviewRuntime,
 ) -> ReviewSessionMetrics:
+    """
+    Selects and runs the appropriate review user interface (TUI or classic) for the
+    given review queue and runtime configuration.
+
+    Chooses the configured UI mode; if Textual TUI mode is selected attempts to run
+    the full-screen TUI and, on initialization failure, logs a warning and falls back
+    to the classic non-TUI review loop.
+
+    Parameters:
+        queue (list[ReviewCase]): Ordered list of review cases to present.
+        runtime (ReviewRuntime): Runtime configuration and state for the review session.
+
+    Returns:
+        ReviewSessionMetrics: Aggregated metrics and staged labels produced by the
+            completed review session.
+    """
     ui_mode = _resolve_review_ui_mode(runtime.config)
     if ui_mode == "classic":
         return _run_review_classic(queue, runtime)
 
     try:
         return _run_tui_review_session(queue, runtime)
-    except RuntimeError as exc:
+    except RuntimeError as exception:
         console.print(
-            f"[yellow]TUI initialization failed ({exc}); using classic mode.[/yellow]"
+            "[yellow]TUI initialization failed "
+            f"({exception}); falling back to classic mode.[/yellow]"
         )
         return _run_review_classic(queue, runtime)
 
@@ -1404,8 +1425,8 @@ def _retrain_command(args: argparse.Namespace) -> int:
     """
     try:
         summary = _prepare_override_retrain_datasets(args)
-    except (RuntimeError, ValueError) as exc:
-        console.print(f"[red]{exc}[/red]")
+    except (RuntimeError, ValueError) as exception:
+        console.print(f"[red]{exception}[/red]")
         return 1
 
     _print_retrain_merge_summary(args, summary)
@@ -1434,7 +1455,7 @@ def _retrain_command(args: argparse.Namespace) -> int:
         )
         return 0
 
-    eval_args = argparse.Namespace(model=args.model, data=args.eval_data_output)
+    eval_args = _build_eval_args(args, data=args.eval_data_output)
     return _evaluate_command(eval_args)
 
 
@@ -1492,27 +1513,54 @@ def _train_command(args: argparse.Namespace) -> int:
 
 
 def _evaluate_command(args: argparse.Namespace) -> int:
-    """Run standalone evaluation command.
+    """
+    Execute the project's evaluation script with the specified model and evaluation
+    data.
 
-    Args:
-        args: Parsed command-line arguments for the evaluate command.
+    Parameters:
+        args (argparse.Namespace): Parsed CLI args. Relevant attributes:
+            - model: path to the trained model to evaluate.
+            - data: optional path to evaluation CSV; when omitted the function uses
+                the module's default evaluation data.
+            - label_column: optional name of the ground-truth label column to pass
+                through.
+            - hybrid_threshold: optional numeric threshold to pass through for hybrid
+                prediction logic.
 
     Returns:
-        Exit code from the evaluate.py script.
+        int: Exit code returned by the evaluation script.
     """
     data_path = _resolve_optional_data_path(args.data)
     if args.data is None:
         console.print(f"[cyan]Using default evaluation data:[/cyan] {data_path}")
 
+    label_column = getattr(args, "label_column", None)
+    hybrid_threshold = getattr(args, "hybrid_threshold", DEFAULT_ML_THRESHOLD)
     script_path = PROJECT_ROOT / "ml_training" / "evaluate.py"
     argv = [
         str(Path(args.model).resolve()),
         str(data_path),
     ]
+    if label_column is not None:
+        argv.extend(["--label-column", label_column])
+    argv.extend(["--hybrid-threshold", str(hybrid_threshold)])
     return _run_script_stage("Evaluation", script_path, argv)
 
 
 def _resolve_eval_data_for_run(args: argparse.Namespace) -> Path:
+    """
+    Select the filesystem path to use for evaluation data based on the provided
+    CLI arguments.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments with attributes `eval_data`,
+            `skip_split`, `prepared_data`, and `unseen_data`.
+
+    Returns:
+        Path: Absolute Path to the chosen evaluation dataset. Prefers `args.eval_data`
+            when provided, otherwise uses `args.prepared_data` if `skip_split` is true,
+            and falls back to `args.unseen_data`.
+    """
     if args.eval_data is not None:
         return Path(args.eval_data).resolve()
     if args.skip_split:
@@ -1520,7 +1568,39 @@ def _resolve_eval_data_for_run(args: argparse.Namespace) -> Path:
     return Path(args.unseen_data).resolve()
 
 
+def _build_eval_args(
+    args: argparse.Namespace,
+    *,
+    data: str | Path | None,
+) -> argparse.Namespace:
+    """Build a complete Namespace for the evaluation command.
+
+    Args:
+        args: Parsed command arguments from the calling workflow.
+        data: Evaluation dataset path to pass through to the evaluate command.
+
+    Returns:
+        Namespace containing the model path, evaluation data path, optional
+        evaluation label column, and hybrid threshold for chained evaluation.
+    """
+    return argparse.Namespace(
+        model=args.model,
+        data=data,
+        label_column=getattr(args, "eval_label_column", None),
+        hybrid_threshold=getattr(args, "hybrid_threshold", DEFAULT_ML_THRESHOLD),
+    )
+
+
 def _print_next_review_step(model_path: Path, data_path: Path) -> None:
+    """
+    Prints a suggested CLI command to launch the review stage using the given model
+    and data paths.
+
+    Parameters:
+        model_path (Path): Filesystem path to the trained model to use in the suggested
+            review command.
+        data_path (Path): Filesystem path to the dataset to review.
+    """
     command = (
         f"{sys.executable} "
         f"{PROJECT_ROOT / 'ml_training' / 'workbench.py'} review "
@@ -1535,13 +1615,17 @@ def _print_next_review_step(model_path: Path, data_path: Path) -> None:
 
 
 def _run_command_chain(args: argparse.Namespace) -> int:
-    """Run train -> evaluate in one command and suggest next review step.
+    """
+    Run training followed by optional evaluation, then print the suggested next review
+    command.
 
-    Args:
-        args: Parsed command-line options controlling training, evaluation,
-            and whether to skip the evaluation step.
+    Parameters:
+        args (argparse.Namespace): Parsed CLI options that control training, evaluation,
+            and flow control (for example, model/data paths and the skip-evaluate flag).
+
     Returns:
-        0 on success, or the first non-zero exit code from training or evaluation.
+        int: 0 on success, or the first non-zero exit code returned by the training or
+            evaluation step.
     """
     train_args = argparse.Namespace(**vars(args))
     train_args.skip_evaluate = True
@@ -1554,7 +1638,7 @@ def _run_command_chain(args: argparse.Namespace) -> int:
         return 0
 
     eval_data = _resolve_eval_data_for_run(args)
-    eval_args = argparse.Namespace(model=args.model, data=eval_data)
+    eval_args = _build_eval_args(args, data=eval_data)
     eval_rc = _evaluate_command(eval_args)
     if eval_rc != 0:
         return eval_rc
@@ -1563,8 +1647,45 @@ def _run_command_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _airway_review_set_command(args: argparse.Namespace) -> int:
+    """Run the airway/anesthesia review-set generator.
+
+    Args:
+        args: Parsed command-line arguments with input/output paths and review
+            set sizing options.
+
+    Returns:
+        Exit code from the airway-review-set script stage.
+    """
+    script_path = PROJECT_ROOT / "ml_training" / "airway_review.py"
+    argv = [
+        "--base-dir",
+        str(Path(args.base_dir).resolve()),
+        "--output",
+        str(Path(args.output).resolve()),
+        "--max-cases",
+        str(args.max_cases),
+        "--default-year",
+        str(args.default_year),
+    ]
+    return _run_script_stage("Airway Review Set", script_path, argv)
+
+
 def _print_cli_overview() -> None:
-    """Render quick command overview for interactive help."""
+    """
+    Print a concise interactive overview of available CLI commands, built-in default
+    paths, and the recommended workflow.
+
+    Displays:
+    - A "Commands" table listing top-level commands, their purpose, and an example
+        invocation.
+    - A "Built-In Paths" table showing default filesystem paths (model, review labels,
+        seen/unseen splits, remaining unseen eval, and airway review set).
+    - A "Workflow" panel with the recommended sequence of steps for iterative training
+        and review.
+
+    No return value.
+    """
     commands = Table(title="Commands", border_style="cyan")
     commands.add_column("Command", style="bold cyan", no_wrap=True)
     commands.add_column("Purpose")
@@ -1585,6 +1706,11 @@ def _print_cli_overview() -> None:
         "Evaluate model on default or explicit CSV",
         "evaluate",
     )
+    commands.add_row(
+        "airway-review-set",
+        "Build manual review set for DLT / route / GA-MAC",
+        "airway-review-set --max-cases 600",
+    )
     commands.add_row("train", "Run training pipeline stages directly", "train --force")
 
     defaults = Table(title="Built-In Paths", border_style="green")
@@ -1595,6 +1721,7 @@ def _print_cli_overview() -> None:
     defaults.add_row("Seen split", str(DEFAULT_SEEN_DATA))
     defaults.add_row("Unseen split", str(DEFAULT_UNSEEN_DATA))
     defaults.add_row("Remaining unseen", str(DEFAULT_REMAINING_EVAL_DATA))
+    defaults.add_row("Airway review set", str(DEFAULT_AIRWAY_REVIEW_OUTPUT))
 
     workflow = (
         "Recommended loop:\n"
@@ -1609,6 +1736,14 @@ def _print_cli_overview() -> None:
 
 
 def _parser_epilog() -> str:
+    """
+    CLI epilog text describing common multi-step workflows for the workbench.
+
+    Returns:
+        str: Multi-line help epilog containing example commands for initial model build,
+            review + override loop, airway/anesthesia review set creation, and model
+            evaluation.
+    """
     return (
         "Workflows:\n"
         "  Initial model build:\n"
@@ -1616,12 +1751,24 @@ def _parser_epilog() -> str:
         "  Review + override loop:\n"
         "    python ml_training/workbench.py review --resume\n"
         "    python ml_training/workbench.py retrain --force\n"
+        "  Build airway/anesthesia review set:\n"
+        "    python ml_training/workbench.py airway-review-set\n"
         "  Evaluate latest model:\n"
         "    python ml_training/workbench.py evaluate\n"
     )
 
 
 def _add_shared_training_arguments(parser: argparse.ArgumentParser) -> None:
+    """
+    Register common training-related command-line options on the provided
+    ArgumentParser.
+
+    Parameters:
+        parser (argparse.ArgumentParser): The argument parser to extend with shared
+            training options such as dataset and model paths, sampling and split
+            parameters, worker and labeling settings, and common boolean flags
+            (skip-prepare, skip-split, skip-evaluate, cross-validate, force).
+    """
     parser.add_argument("--case-dir", default=DEFAULT_CASE_DIR)
     parser.add_argument("--prepared-data", default=DEFAULT_PREPARED_DATA)
     parser.add_argument("--seen-data", default=DEFAULT_SEEN_DATA)
@@ -1640,7 +1787,49 @@ def _add_shared_training_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--force", action="store_true")
 
 
+def _add_eval_label_argument(parser: argparse.ArgumentParser) -> None:
+    """
+    Add evaluation-specific CLI arguments to `parser`.
+
+    This registers two optional flags:
+    - `--eval-label-column`: name of a ground-truth label column to use for evaluation.
+    - `--hybrid-threshold`: floating-point decision threshold forwarded to evaluation
+        (default shown in help).
+    """
+    parser.add_argument(
+        "--eval-label-column",
+        default=None,
+        help="Optional ground-truth label column for evaluation only",
+    )
+    parser.add_argument(
+        "--hybrid-threshold",
+        type=float,
+        default=DEFAULT_ML_THRESHOLD,
+        help=(
+            "Hybrid threshold forwarded to chained evaluation "
+            f"(default: {DEFAULT_ML_THRESHOLD:.2f})"
+        ),
+    )
+
+
 def _configure_train_parser(subparsers: argparse._SubParsersAction) -> None:
+    """
+    Register the "train" subcommand with the top-level argument parser and attach
+    shared training options.
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The subparsers object returned by
+            ArgumentParser.add_subparsers() into which the "train" command will be
+            registered.
+
+    Description:
+        The created "train" command runs deterministic training stages (by default:
+        prepare, split, train, and evaluate) and exposes the shared training-related
+        arguments added by _add_shared_training_arguments. Example usages include:
+          python ml_training/workbench.py train --force
+          python ml_training/workbench.py train --skip-prepare --force
+          python ml_training/workbench.py train --cross-validate --force
+    """
     train_parser = subparsers.add_parser(
         "train",
         help="Prepare/train/validate model",
@@ -1660,6 +1849,23 @@ def _configure_train_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _configure_evaluate_parser(subparsers: argparse._SubParsersAction) -> None:
+    """
+    Register and configure the "evaluate" subcommand on the given argparse subparsers
+    object.
+
+    Adds an "evaluate" parser and the following options:
+    - --model: path to the model to evaluate (defaults to DEFAULT_MODEL_PATH).
+    - --data: optional evaluation CSV path; when omitted the built-in default unseen
+        evaluation paths are used.
+    - --label-column: optional ground-truth label column name
+        (auto-detected when omitted).
+    - --hybrid-threshold: float threshold used when reporting labeled accuracy
+        (defaults to DEFAULT_ML_THRESHOLD).
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The argparse subparsers collection to
+            which the "evaluate" command parser will be added.
+    """
     eval_parser = subparsers.add_parser(
         "evaluate",
         help="Evaluate model on a CSV",
@@ -1684,9 +1890,35 @@ def _configure_evaluate_parser(subparsers: argparse._SubParsersAction) -> None:
             "(default: unseen_eval_remaining.csv if present, else unseen_eval.csv)"
         ),
     )
+    eval_parser.add_argument(
+        "--label-column",
+        default=None,
+        help="Optional ground-truth label column (auto-detected when omitted)",
+    )
+    eval_parser.add_argument(
+        "--hybrid-threshold",
+        type=float,
+        default=DEFAULT_ML_THRESHOLD,
+        help=(
+            "Hybrid threshold used when reporting labeled accuracy "
+            f"(default: {DEFAULT_ML_THRESHOLD:.2f})"
+        ),
+    )
 
 
 def _configure_review_parser(subparsers: argparse._SubParsersAction) -> None:
+    """
+    Register the "review" subcommand and its command-line arguments on the provided
+    subparsers.
+
+    Configures the review command used to run the interactive review workflow and adds
+    arguments for model/data paths, selection focus, confidence threshold,
+    maximum cases, output/progress files, resume behavior, and UI mode.
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The parser group to which the "review"
+            subcommand will be attached.
+    """
     review_parser = subparsers.add_parser(
         "review",
         help="Streamlined interactive correction interface",
@@ -1731,6 +1963,21 @@ def _configure_review_parser(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _configure_run_parser(subparsers: argparse._SubParsersAction) -> None:
+    """
+    Register the "run" subcommand parser which configures a one-command pipeline for
+    prepare/split/train/evaluate.
+
+    Adds shared training arguments, evaluation-related options, and help/epilog text for
+    the "run" command:
+    - common training flags via _add_shared_training_arguments
+    - --eval-data to optionally specify an evaluation dataset (defaults to the unseen
+        split when omitted)
+    - evaluation label and hybrid-threshold flags via _add_eval_label_argument
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The subparsers object to which the
+            "run" parser will be added.
+    """
     run_parser = subparsers.add_parser(
         "run",
         help="Train then evaluate using one command",
@@ -1755,9 +2002,66 @@ def _configure_run_parser(subparsers: argparse._SubParsersAction) -> None:
             "(if omitted, unseen split is used when available)"
         ),
     )
+    _add_eval_label_argument(run_parser)
+
+
+def _configure_airway_review_set_parser(
+    subparsers: argparse._SubParsersAction,
+) -> None:
+    """
+    Register the "airway-review-set" CLI subcommand and its arguments on the provided
+    subparsers.
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The subparsers object returned by
+            ArgumentParser.add_subparsers() to which the new subcommand will be
+            attached.
+
+    Description:
+        Adds the "airway-review-set" command which scans the supervised CSV corpus and
+        builds a focused manual-review CSV for airway/anesthesia targets. The command
+        exposes these options:
+          --base-dir: base directory containing supervised CSVs
+            (default: PROJECT_ROOT / "Output-Supervised")
+          --output: output CSV path for review candidates
+            (default: DEFAULT_AIRWAY_REVIEW_OUTPUT)
+          --max-cases: maximum number of candidate cases to include (default: 600)
+          --default-year: default year to use when inferring missing year values
+            (default: 2025)
+    """
+    parser = subparsers.add_parser(
+        "airway-review-set",
+        help="Build manual review set for airway/anesthesia targets",
+        description=(
+            "Scan the supervised CSV corpus and build a focused manual-review "
+            "CSV for double-lumen tube, oral-vs-nasal route, and GA-vs-MAC."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python ml_training/workbench.py airway-review-set\n"
+            "  python ml_training/workbench.py airway-review-set --max-cases 800\n"
+            "  python ml_training/workbench.py airway-review-set "
+            "--output ml_training_data/airway_review_candidates.csv"
+        ),
+    )
+    parser.add_argument("--base-dir", default=PROJECT_ROOT / "Output-Supervised")
+    parser.add_argument("--output", default=DEFAULT_AIRWAY_REVIEW_OUTPUT)
+    parser.add_argument("--max-cases", type=int, default=600)
+    parser.add_argument("--default-year", type=int, default=2025)
 
 
 def _configure_retrain_parser(subparsers: argparse._SubParsersAction) -> None:
+    """
+    Configure the `retrain` subcommand parser with arguments used to merge review
+    overrides, prepare retrain/eval datasets, and control retraining/evaluation
+    behavior.
+
+    Parameters:
+        subparsers (argparse._SubParsersAction): The collection of subparsers returned
+            by ArgumentParser.add_subparsers(); this function registers the `retrain`
+            subparser and its options on it.
+    """
     retrain_parser = subparsers.add_parser(
         "retrain",
         help="Retrain using overrides from review labels",
@@ -1788,17 +2092,19 @@ def _configure_retrain_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     retrain_parser.add_argument("--model", default=DEFAULT_MODEL_PATH)
     retrain_parser.add_argument("--label-column", default="rule_category")
+    _add_eval_label_argument(retrain_parser)
     retrain_parser.add_argument("--cross-validate", action="store_true")
     retrain_parser.add_argument("--skip-evaluate", action="store_true")
     retrain_parser.add_argument("--force", action="store_true")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI parser.
+    """
+    Build the command-line ArgumentParser for the application.
 
     Returns:
-        Configured ArgumentParser with train, evaluate, review, run, and
-        retrain subcommands.
+        argparse.ArgumentParser: Configured parser with subcommands: train, evaluate,
+            review, run, airway-review-set, and retrain.
     """
     parser = argparse.ArgumentParser(
         description=(
@@ -1813,16 +2119,23 @@ def build_parser() -> argparse.ArgumentParser:
     _configure_evaluate_parser(subparsers)
     _configure_review_parser(subparsers)
     _configure_run_parser(subparsers)
+    _configure_airway_review_set_parser(subparsers)
     _configure_retrain_parser(subparsers)
 
     return parser
 
 
 def main() -> int:
-    """Main entrypoint.
+    """
+    Parse command-line arguments, print the CLI overview when no arguments are given,
+    and dispatch the selected subcommand.
+
+    When invoked with no subcommand prints an overview and detailed help. Otherwise
+    looks up and calls the corresponding command handler and returns its exit code.
 
     Returns:
-        0 on success, 1 if an unknown command is dispatched.
+        An integer exit code: `0` on success, `1` if an unknown command is provided,
+            or the exit code returned by the selected subcommand.
     """
     parser = build_parser()
 
@@ -1848,6 +2161,7 @@ def main() -> int:
         "evaluate": _evaluate_command,
         "review": _review_command,
         "run": _run_command_chain,
+        "airway-review-set": _airway_review_set_command,
         "retrain": _retrain_command,
     }
     handler = handlers.get(args.command)
