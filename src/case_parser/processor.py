@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import math
+import multiprocessing as mp
+from collections.abc import Mapping
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from itertools import starmap
+from itertools import chain, starmap
 from typing import Any
 
 import pandas as pd
@@ -24,16 +27,72 @@ from .extractors import (
     extract_vascular_access,
 )
 from .ml import get_hybrid_classifier
+from .ml.config import DEFAULT_ML_THRESHOLD
 from .ml.hybrid import HybridClassifier
 from .models import OUTPUT_COLUMNS, STANDALONE_OUTPUT_COLUMNS, ColumnMap
 from .patterns.age_patterns import AGE_RANGES
 from .patterns.anesthesia_patterns import (
     ANESTHESIA_MAPPING,
+    GA_NOTE_KEYWORDS,
+    MAC_NOTE_KEYWORDS,
     MAC_WITHOUT_AIRWAY_PROCEDURE_KEYWORDS,
+)
+from .patterns.block_site_patterns import (
+    NEURAXIAL_BLOCK_SITE_TERMS,
+    PERIPHERAL_BLOCK_SITE_TERMS,
+    normalize_block_site_terms,
 )
 from .patterns.categorization import categorize_procedure
 
 logger = logging.getLogger(__name__)
+_CANONICAL_BLOCK_SITE_TERMS = {
+    *PERIPHERAL_BLOCK_SITE_TERMS,
+    *NEURAXIAL_BLOCK_SITE_TERMS,
+}
+_GENERIC_PERIPHERAL_BLOCK_SITE = "Other - peripheral nerve blockade site"
+_PROCESS_POOL_MIN_ROWS = 25_000
+_PROCESS_POOL_TARGET_CHUNK_ROWS = 12_500
+_PROCESS_CHUNK_STATE: dict[str, Any] = {
+    "df": None,
+    "processor": None,
+}
+
+
+def _get_process_pool_context() -> mp.context.BaseContext | None:
+    """Return a fork-based context when the runtime supports it."""
+    try:
+        return mp.get_context("fork")
+    except ValueError:
+        return None
+
+
+def _init_process_chunk_worker(
+    column_map: ColumnMap,
+    default_year: int,
+    use_ml: bool,
+    ml_threshold: float,
+) -> None:
+    """Initialize one CaseProcessor per process-pool worker."""
+    _PROCESS_CHUNK_STATE["processor"] = CaseProcessor(
+        column_map,
+        default_year=default_year,
+        use_ml=use_ml,
+        ml_threshold=ml_threshold,
+    )
+
+
+def _process_dataframe_chunk(span: tuple[int, int]) -> list[ParsedCase]:
+    """Process one dataframe span using inherited forked state."""
+    dataframe = _PROCESS_CHUNK_STATE["df"]
+    processor = _PROCESS_CHUNK_STATE["processor"]
+    if dataframe is None:
+        raise RuntimeError("process chunk dataframe was not initialized")
+    if processor is None:
+        raise RuntimeError("process chunk worker processor was not initialized")
+
+    start, end = span
+    chunk = dataframe.iloc[start:end].reset_index(drop=True)
+    return processor.process_dataframe(chunk, workers=1)
 
 
 @dataclass
@@ -61,6 +120,17 @@ class _ExtractionResult:
     monitoring: list[Any]
 
 
+@dataclass
+class _PreparedRow:
+    """Precomputed row inputs shared across row processing."""
+
+    timestamp: datetime
+    date_warnings: list[str]
+    services: list[str]
+    procedure_category: ProcedureCategory
+    procedure_warnings: list[str]
+
+
 class CaseProcessor:
     """Enhanced processor using typed intermediate representation."""
 
@@ -69,7 +139,7 @@ class CaseProcessor:
         column_map: ColumnMap,
         default_year: int = 2025,
         use_ml: bool = True,
-        ml_threshold: float = 0.7,
+        ml_threshold: float = DEFAULT_ML_THRESHOLD,
     ):
         """Initialize the processor with column mapping and default year.
 
@@ -81,12 +151,19 @@ class CaseProcessor:
         """
         self.column_map = column_map
         self.default_year = default_year
+        self._use_ml = use_ml
+        self._ml_threshold = ml_threshold
 
         # Initialize hybrid classifier
         if use_ml:
             self.classifier = get_hybrid_classifier(ml_threshold=ml_threshold)
         else:
             self.classifier = HybridClassifier(ml_predictor=None)
+
+    @property
+    def _default_timestamp(self) -> datetime:
+        """Return the fallback datetime used when parsing fails."""
+        return datetime(year=self.default_year, month=1, day=1, tzinfo=UTC)
 
     def parse_date(self, value: Any) -> tuple[datetime, list[str]]:
         """Parse date with fallback to default year.
@@ -105,10 +182,7 @@ class CaseProcessor:
             warnings.append(
                 f"Missing date value, using default year {self.default_year}"
             )
-            return (
-                datetime(year=self.default_year, month=1, day=1, tzinfo=UTC),
-                warnings,
-            )
+            return (self._default_timestamp, warnings)
 
         # Try standard parsing first
         timestamp = pd.to_datetime(value, errors="coerce")
@@ -124,10 +198,7 @@ class CaseProcessor:
         warnings.append(
             f"Could not parse date '{value}', using default year {self.default_year}"
         )
-        return (
-            datetime(year=self.default_year, month=1, day=1, tzinfo=UTC),
-            warnings,
-        )
+        return (self._default_timestamp, warnings)
 
     @staticmethod
     def determine_age_category(age: Any) -> tuple[AgeCategory | None, list[str]]:
@@ -258,11 +329,12 @@ class CaseProcessor:
         return str(value).strip().upper() in {"E", "Y", "YES", "TRUE", "1"}
 
     @staticmethod
-    def _infer_anesthesia_type(
+    def _infer_anesthesia_type(  # noqa: PLR0911
         anesthesia_type: AnesthesiaType | None,
         airway_mgmt: list,
         procedure_text: Any,
         procedure_category: ProcedureCategory,
+        notes: Any,
     ) -> tuple[AnesthesiaType | None, list[str]]:
         """Infer anesthesia type from context clues when not directly mapped.
 
@@ -272,6 +344,7 @@ class CaseProcessor:
             procedure_text: Raw procedure description used for MAC keyword checks.
             procedure_category: Categorized procedure type used to suppress
                 defaulting for obstetric cases.
+            notes: Free-text procedure or airway notes used for GA/MAC clues.
 
         Returns:
             Tuple of (anesthesia_type, warnings_list) with the inferred type
@@ -287,6 +360,19 @@ class CaseProcessor:
             )
 
         procedure_upper = "" if pd.isna(procedure_text) else str(procedure_text).upper()
+        notes_upper = "" if pd.isna(notes) else str(notes).upper()
+        if any(keyword in notes_upper for keyword in MAC_NOTE_KEYWORDS):
+            return (
+                AnesthesiaType.MAC,
+                ["Inferred MAC from note text without airway documentation"],
+            )
+
+        if any(keyword in notes_upper for keyword in GA_NOTE_KEYWORDS):
+            return (
+                AnesthesiaType.GENERAL,
+                ["Inferred general anesthesia from note text"],
+            )
+
         if any(
             keyword in procedure_upper
             for keyword in MAC_WITHOUT_AIRWAY_PROCEDURE_KEYWORDS
@@ -380,18 +466,74 @@ class CaseProcessor:
         return clean_names(value)
 
     @staticmethod
-    def _normalize_nerve_block_type(value: Any) -> str | None:
-        """Normalize optional nerve block field for output."""
-        if pd.isna(value):
+    def _normalize_nerve_block_type(
+        value: Any, procedure_name: Any, procedure_notes: Any
+    ) -> str | None:
+        """Normalize optional nerve-block text to canonical site term(s)."""
+        return normalize_block_site_terms(
+            CaseProcessor._optional_str(value),
+            procedure_name=CaseProcessor._optional_str(procedure_name),
+            procedure_notes=CaseProcessor._optional_str(procedure_notes),
+        )
+
+    @staticmethod
+    def _derive_unmatched_block_source(
+        raw_block_type: str | None, normalized_block_type: str | None
+    ) -> str | None:
+        """Return original block text when normalization was unknown/generic."""
+        if raw_block_type is None:
             return None
-        return str(value).strip()
+        if normalized_block_type is None:
+            return raw_block_type
+
+        normalized_terms = {
+            term.strip() for term in normalized_block_type.split(";") if term.strip()
+        }
+        if not normalized_terms:
+            return raw_block_type
+
+        # Keep original text for generic or unknown mappings to aid pattern tuning.
+        if _GENERIC_PERIPHERAL_BLOCK_SITE in normalized_terms:
+            return raw_block_type
+        if not normalized_terms.issubset(_CANONICAL_BLOCK_SITE_TERMS):
+            return raw_block_type
+
+        return None
+
+    def _build_error_case(self, message: str) -> ParsedCase:
+        """Create a minimal ParsedCase used for row-level failures."""
+        return ParsedCase(
+            raw_date=None,
+            episode_id=None,
+            raw_age=None,
+            raw_asa=None,
+            emergent=False,
+            raw_anesthesia_type=None,
+            services=[],
+            procedure=None,
+            procedure_notes=None,
+            responsible_provider=None,
+            nerve_block_type=None,
+            raw_nerve_block_type=None,
+            unmatched_block_source=None,
+            case_date=datetime(self.default_year, 1, 1, tzinfo=UTC).date(),
+            parsing_warnings=[message],
+            confidence_score=0.0,
+        )
 
     def _parse_row_metadata(
-        self, row: pd.Series, all_warnings: list[str]
+        self,
+        row: Mapping[str, Any],
+        all_warnings: list[str],
+        prepared: _PreparedRow | None = None,
     ) -> _ParsedRowMetadata:
         """Parse non-extraction metadata from a source row."""
-        timestamp, date_warnings = self.parse_date(row.get(self.column_map.date))
-        all_warnings.extend(date_warnings)
+        if prepared is not None:
+            timestamp = prepared.timestamp
+            all_warnings.extend(prepared.date_warnings)
+        else:
+            timestamp, date_warnings = self.parse_date(row.get(self.column_map.date))
+            all_warnings.extend(date_warnings)
 
         age_category, age_warnings = self.determine_age_category(
             row.get(self.column_map.age)
@@ -404,10 +546,16 @@ class CaseProcessor:
         )
         all_warnings.extend(anesthesia_warnings)
 
-        services = self._split_services(row.get(self.column_map.services))
+        services = (
+            prepared.services
+            if prepared is not None
+            else self._split_services(row.get(self.column_map.services))
+        )
         procedure_text = row.get(self.column_map.procedure)
-        procedure_category, proc_warnings = self.determine_procedure_category(
-            procedure_text, services
+        procedure_category, proc_warnings = (
+            (prepared.procedure_category, prepared.procedure_warnings)
+            if prepared is not None
+            else self.determine_procedure_category(procedure_text, services)
         )
         all_warnings.extend(proc_warnings)
 
@@ -440,6 +588,7 @@ class CaseProcessor:
             airway_mgmt,
             metadata.procedure_text,
             metadata.procedure_category,
+            notes,
         )
         all_warnings.extend(infer_warnings)
 
@@ -465,7 +614,11 @@ class CaseProcessor:
             monitoring=monitoring,
         )
 
-    def process_row(self, row: pd.Series) -> ParsedCase:
+    def process_row(
+        self,
+        row: Mapping[str, Any],
+        prepared: _PreparedRow | None = None,
+    ) -> ParsedCase:
         """Process a single row into a typed ParsedCase.
 
         Args:
@@ -481,7 +634,7 @@ class CaseProcessor:
             all_findings: list[Any] = []
             confidence_scores: list[float] = []
 
-            metadata = self._parse_row_metadata(row, all_warnings)
+            metadata = self._parse_row_metadata(row, all_warnings, prepared=prepared)
             notes = row.get(self.column_map.procedure_notes)
             extracted = self._extract_case_data(
                 notes, metadata, all_warnings, all_findings, confidence_scores
@@ -490,6 +643,14 @@ class CaseProcessor:
                 confidence_scores, notes
             )
             all_warnings.extend(conf_warnings)
+            raw_nerve_block_type = self._optional_str(
+                row.get(self.column_map.nerve_block_type)
+            )
+            normalized_nerve_block_type = self._normalize_nerve_block_type(
+                raw_nerve_block_type,
+                row.get(self.column_map.final_anesthesia_type),
+                notes,
+            )
 
             return ParsedCase(
                 raw_date=self._optional_str(row.get(self.column_map.date)),
@@ -508,8 +669,11 @@ class CaseProcessor:
                 responsible_provider=self._clean_provider_name(
                     row.get(self.column_map.anesthesiologist)
                 ),
-                nerve_block_type=self._normalize_nerve_block_type(
-                    row.get(self.column_map.nerve_block_type)
+                nerve_block_type=normalized_nerve_block_type,
+                raw_nerve_block_type=raw_nerve_block_type,
+                unmatched_block_source=self._derive_unmatched_block_source(
+                    raw_nerve_block_type,
+                    normalized_nerve_block_type,
                 ),
                 case_date=metadata.timestamp.date(),
                 age_category=metadata.age_category,
@@ -525,32 +689,12 @@ class CaseProcessor:
             )
         except Exception as e:
             logger.exception("Error processing row: %s", e)
-            return ParsedCase(
-                raw_date=None,
-                episode_id=None,
-                raw_age=None,
-                raw_asa=None,
-                emergent=False,
-                raw_anesthesia_type=None,
-                services=[],
-                procedure=None,
-                procedure_notes=None,
-                responsible_provider=None,
-                nerve_block_type=None,
-                case_date=datetime(self.default_year, 1, 1, tzinfo=UTC).date(),
-                age_category=None,
-                asa_physical_status="",
-                anesthesia_type=None,
-                procedure_category=ProcedureCategory.OTHER,
-                airway_management=[],
-                vascular_access=[],
-                monitoring=[],
-                extraction_findings=[],
-                parsing_warnings=[f"Failed to process row: {e!s}"],
-                confidence_score=0.0,
-            )
+            return self._build_error_case(f"Failed to process row: {e!s}")
 
-    def get_asa(self, all_warnings: list[str], row: pd.Series) -> tuple[str, bool, Any]:
+    def get_asa(
+        self, all_warnings: list[str], row: Mapping[str, Any]
+    ) -> tuple[str, bool, Any]:
+        """Return ASA text, normalized emergent flag, and original ASA value."""
         # Handle ASA with emergent flag
         raw_asa = row.get(self.column_map.asa)
         asa_str = "" if pd.isna(raw_asa) else str(raw_asa)
@@ -561,7 +705,12 @@ class CaseProcessor:
             all_warnings.append("Added 'E' to ASA status based on emergent flag")
         return asa_str, emergent, raw_asa
 
-    def _process_row_safe(self, idx: Any, row: pd.Series) -> ParsedCase:
+    def _process_row_safe(
+        self,
+        idx: Any,
+        row: Mapping[str, Any],
+        prepared: _PreparedRow | None = None,
+    ) -> ParsedCase:
         """Process a single row, returning an error case on failure.
 
         Args:
@@ -572,24 +721,161 @@ class CaseProcessor:
             ParsedCase on success, or a minimal error case if processing raises.
         """
         try:
-            return self.process_row(row)
+            return self.process_row(row, prepared=prepared)
         except Exception as e:
             logger.exception("Error processing row %d: %s", idx, e)
-            return ParsedCase(
-                raw_date=None,
-                episode_id=None,
-                raw_age=None,
-                raw_asa=None,
-                emergent=False,
-                raw_anesthesia_type=None,
-                services=[],
-                procedure=None,
-                procedure_notes=None,
-                responsible_provider=None,
-                case_date=datetime(self.default_year, 1, 1, tzinfo=UTC).date(),
-                parsing_warnings=[f"Failed to process row: {e!s}"],
-                confidence_score=0.0,
+            return self._build_error_case(f"Failed to process row: {e!s}")
+
+    def _prepare_rows(self, rows: list[dict[str, Any]]) -> list[_PreparedRow]:
+        """Precompute services and procedure categories for a dataframe batch."""
+        date_preparations = self._prepare_dates(
+            [row.get(self.column_map.date) for row in rows]
+        )
+        services_list = [
+            self._split_services(row.get(self.column_map.services)) for row in rows
+        ]
+        procedure_texts = [
+            ""
+            if pd.isna(row.get(self.column_map.procedure))
+            else str(row.get(self.column_map.procedure))
+            for row in rows
+        ]
+        classifications = self.classifier.classify_many(procedure_texts, services_list)
+        return [
+            _PreparedRow(
+                timestamp=timestamp,
+                date_warnings=date_warnings,
+                services=services,
+                procedure_category=classification["category"],
+                procedure_warnings=list(classification.get("warnings", [])),
             )
+            for (timestamp, date_warnings), services, classification in zip(
+                date_preparations,
+                services_list,
+                classifications,
+                strict=False,
+            )
+        ]
+
+    def _prepare_dates(self, values: list[Any]) -> list[tuple[datetime, list[str]]]:
+        """Parse many dates at once while preserving row-level warnings."""
+        if not values:
+            return []
+
+        series = pd.Series(values, dtype="object")
+        missing_mask = series.isna()
+        parsed = pd.to_datetime(series, errors="coerce")
+
+        unparsed_mask = (~missing_mask) & parsed.isna()
+        if unparsed_mask.any():
+            parsed.loc[unparsed_mask] = pd.to_datetime(
+                series.loc[unparsed_mask].astype(str),
+                format="%m/%d/%Y",
+                errors="coerce",
+            )
+
+        prepared_dates: list[tuple[datetime, list[str]]] = []
+        parsed_values = parsed.tolist()
+        missing_values = missing_mask.tolist()
+        default_timestamp = self._default_timestamp
+        for value, is_missing, timestamp in zip(
+            values,
+            missing_values,
+            parsed_values,
+            strict=False,
+        ):
+            if is_missing:
+                prepared_dates.append(
+                    (
+                        default_timestamp,
+                        [
+                            "Missing date value, "
+                            f"using default year {self.default_year}"
+                        ],
+                    )
+                )
+                continue
+
+            if pd.notna(timestamp):
+                if isinstance(timestamp, pd.Timestamp):
+                    prepared_dates.append((timestamp.to_pydatetime(), []))
+                else:
+                    prepared_dates.append((timestamp, []))
+                continue
+
+            prepared_dates.append(
+                (
+                    default_timestamp,
+                    [
+                        f"Could not parse date '{value}', "
+                        f"using default year {self.default_year}"
+                    ],
+                )
+            )
+
+        return prepared_dates
+
+    def _should_use_process_pool(self, row_count: int, workers: int) -> bool:
+        """Return whether large-batch process chunking is worth attempting."""
+        return (
+            workers > 1
+            and row_count >= _PROCESS_POOL_MIN_ROWS
+            and self.classifier.ml_predictor is not None
+            and _get_process_pool_context() is not None
+        )
+
+    @staticmethod
+    def _build_chunk_spans(row_count: int) -> list[tuple[int, int]]:
+        """Split a large dataframe into balanced process-pool chunk spans."""
+        if row_count <= 0:
+            return []
+
+        chunk_count = max(
+            1,
+            math.ceil(row_count / _PROCESS_POOL_TARGET_CHUNK_ROWS),
+        )
+        chunk_size = math.ceil(row_count / chunk_count)
+        return [
+            (start, min(start + chunk_size, row_count))
+            for start in range(0, row_count, chunk_size)
+        ]
+
+    def _process_rows_in_process_chunks(
+        self,
+        df: pd.DataFrame,
+        workers: int,
+    ) -> list[ParsedCase]:
+        """Process a large ML-heavy dataframe through forked dataframe chunks."""
+        context = _get_process_pool_context()
+        if context is None:
+            raise RuntimeError("fork-based process pools are not available")
+
+        chunk_spans = self._build_chunk_spans(len(df))
+        if not chunk_spans:
+            return []
+
+        _PROCESS_CHUNK_STATE["df"] = df
+        _PROCESS_CHUNK_STATE["processor"] = None
+        try:
+            with ProcessPoolExecutor(
+                max_workers=min(workers, len(chunk_spans)),
+                mp_context=context,
+                initializer=_init_process_chunk_worker,
+                initargs=(
+                    self.column_map,
+                    self.default_year,
+                    self._use_ml,
+                    self._ml_threshold,
+                ),
+            ) as executor:
+                chunk_results = list(
+                    executor.map(_process_dataframe_chunk, chunk_spans)
+                )
+        finally:
+            _PROCESS_CHUNK_STATE["df"] = None
+            _PROCESS_CHUNK_STATE["processor"] = None
+
+        return list(chain.from_iterable(chunk_results))
 
     def process_dataframe(self, df: pd.DataFrame, workers: int = 1) -> list[ParsedCase]:
         """Transform input DataFrame to a list of ParsedCase objects.
@@ -597,8 +883,10 @@ class CaseProcessor:
         Args:
             df: Input DataFrame with columns matching self.column_map.
                 Missing columns are warned about but do not halt processing.
-            workers: Number of threads for parallel row processing. Defaults
-                to 1 (sequential). Values > 1 use ThreadPoolExecutor.
+            workers: Number of worker slots for parallel processing. Defaults
+                to 1 (sequential). Large ML-heavy batches may use process
+                chunks; smaller batches otherwise stay in-process and use row
+                threads when workers > 1.
 
         Returns:
             List of ParsedCase objects, one per row. Rows that raise an
@@ -624,17 +912,47 @@ class CaseProcessor:
         if missing_columns:
             logger.warning("Missing columns in input data: %s", missing_columns)
 
-        indexed_rows = list(df.iterrows())
+        if self._should_use_process_pool(len(df), workers):
+            try:
+                processed_cases = self._process_rows_in_process_chunks(df, workers)
+            except Exception as e:
+                logger.exception(
+                    "Process chunk execution failed; "
+                    "falling back to in-process row handling: %s",
+                    e,
+                )
+            else:
+                logger.info("Successfully processed %d cases", len(processed_cases))
+                return processed_cases
+
+        rows = df.to_dict(orient="records")
+        try:
+            prepared_rows: list[_PreparedRow | None] = self._prepare_rows(rows)
+        except Exception as e:
+            logger.exception(
+                "Batch row preparation failed; falling back to per-row processing: %s",
+                e,
+            )
+            prepared_rows = [None for _ in rows]
         processed_cases: list[ParsedCase] = []
         if workers == 1:
+            indexed_rows = zip(
+                range(len(rows)),
+                rows,
+                prepared_rows,
+                strict=False,
+            )
             processed_cases = list(starmap(self._process_row_safe, indexed_rows))
         else:
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = [
-                    executor.submit(self._process_row_safe, idx, row)
-                    for idx, row in indexed_rows
-                ]
-                processed_cases = [f.result() for f in futures]
+                processed_cases = list(
+                    executor.map(
+                        self._process_row_safe,
+                        range(len(rows)),
+                        rows,
+                        prepared_rows,
+                    )
+                )
 
         logger.info("Successfully processed %d cases", len(processed_cases))
         return processed_cases

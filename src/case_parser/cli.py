@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,7 @@ from .io import (
     read_excel,
 )
 from .logging_config import setup_logging
+from .ml.config import DEFAULT_ML_THRESHOLD
 from .models import (
     FORMAT_TYPE_CASELOG,
     FORMAT_TYPE_STANDALONE,
@@ -40,6 +42,42 @@ from .validation import ValidationReport
 
 logger = logging.getLogger(__name__)
 console = Console()
+_NEURAXIAL_STANDALONE_HINTS = (
+    "EPIDURAL",
+    "SPINAL",
+    "CSE",
+    "CAUDAL",
+    "CERVICAL",
+    "INTRATHECAL",
+    "LUMBAR",
+    "SUBARACHNOID",
+    "T 1-7",
+    "T 8-12",
+)
+_BLOCK_STANDALONE_HINTS = (
+    "PERIPHERAL NERVE BLOCK",
+    "NERVE BLOCK",
+    "BLOCK",
+)
+
+
+@dataclass(frozen=True)
+class _ProcessingOptions:
+    """Runtime options used across processing entry points."""
+
+    default_year: int
+    sheet_name: str | int | None
+    use_ml: bool
+    ml_threshold: float
+    workers: int
+
+
+@dataclass(frozen=True)
+class _StandaloneOutputSpec:
+    """Metadata describing one standalone orphan output."""
+
+    suffix: str
+    label: str
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -107,6 +145,30 @@ Examples:
         action="store_true",
         help="Use CSV v2 format (separate CaseList and ProcedureList files). "
         "Input must be a directory containing matching CSV pairs.",
+    )
+    parser.add_argument(
+        "--no-ml",
+        action="store_true",
+        help="Disable ML-assisted categorization and use rules only.",
+    )
+    parser.add_argument(
+        "--ml-threshold",
+        type=float,
+        default=DEFAULT_ML_THRESHOLD,
+        help=(
+            "Minimum ML confidence used for hybrid categorization "
+            f"(default: {DEFAULT_ML_THRESHOLD:.2f})"
+        ),
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help=(
+            "Number of worker slots for parsing "
+            "(default: 1; large ML-heavy batches may use process chunks, "
+            "but higher values often do not improve smaller runs)"
+        ),
     )
 
     # Column override options
@@ -177,6 +239,10 @@ def validate_arguments(args: argparse.Namespace) -> None:
 
     if args.default_year < 1900 or args.default_year > 2100:
         raise ValueError("Default year must be between 1900 and 2100")
+    if not 0.0 <= args.ml_threshold <= 1.0:
+        raise ValueError("ML threshold must be between 0.0 and 1.0")
+    if args.workers < 1:
+        raise ValueError("workers must be at least 1")
 
 
 def find_excel_files(directory: Path) -> list[Path]:
@@ -194,7 +260,7 @@ def find_excel_files(directory: Path) -> list[Path]:
 def process_single_excel_file(
     file_path: Path,
     processor: CaseProcessor,
-    sheet_name: str | int | None,
+    options: _ProcessingOptions,
 ) -> list[ParsedCase]:
     """Read and process a single Excel file.
 
@@ -208,7 +274,7 @@ def process_single_excel_file(
     """
     console.print(f"[cyan]Processing:[/cyan] {file_path.name}")
 
-    df = read_excel(str(file_path), sheet_name=sheet_name or 0)
+    df = read_excel(str(file_path), sheet_name=options.sheet_name or 0)
 
     if df.empty:
         console.print(
@@ -216,7 +282,7 @@ def process_single_excel_file(
         )
         return []
 
-    cases = processor.process_dataframe(df)
+    cases = processor.process_dataframe(df, workers=options.workers)
     console.print(
         f"[green]  OK[/green] Parsed {len(cases)} cases from {file_path.name}"
     )
@@ -226,7 +292,7 @@ def process_single_excel_file(
 def process_excel_directory(
     directory: Path,
     processor: CaseProcessor,
-    sheet_name: str | int | None,
+    options: _ProcessingOptions,
 ) -> list[ParsedCase]:
     """Process all Excel files in a directory.
 
@@ -246,7 +312,13 @@ def process_excel_directory(
 
     all_cases: list[ParsedCase] = []
     for excel_file in excel_files:
-        all_cases.extend(process_single_excel_file(excel_file, processor, sheet_name))
+        all_cases.extend(
+            process_single_excel_file(
+                excel_file,
+                processor,
+                options,
+            )
+        )
 
     console.print(
         f"\n[bold green]Processed {len(excel_files)} files, "
@@ -255,11 +327,20 @@ def process_excel_directory(
     return all_cases
 
 
+def _build_processor(columns: ColumnMap, options: _ProcessingOptions) -> CaseProcessor:
+    """Create a processor instance from shared runtime options."""
+    return CaseProcessor(
+        columns,
+        options.default_year,
+        use_ml=options.use_ml,
+        ml_threshold=options.ml_threshold,
+    )
+
+
 def process_excel(
     input_path: Path,
     columns: ColumnMap,
-    default_year: int,
-    sheet_name: str | int | None,
+    options: _ProcessingOptions,
 ) -> tuple[list[ParsedCase], DataFrame]:
     """Dispatch Excel processing for a single file or a directory.
 
@@ -273,12 +354,12 @@ def process_excel(
         Tuple of (cases, output_df) where cases is the list of ParsedCase objects
         and output_df is the corresponding output-formatted DataFrame.
     """
-    processor = CaseProcessor(columns, default_year)
+    processor = _build_processor(columns, options)
 
     if input_path.is_file():
-        cases = process_single_excel_file(input_path, processor, sheet_name)
+        cases = process_single_excel_file(input_path, processor, options)
     else:
-        cases = process_excel_directory(input_path, processor, sheet_name)
+        cases = process_excel_directory(input_path, processor, options)
 
     output_df = CaseProcessor.cases_to_dataframe(cases)
     return cases, output_df
@@ -288,18 +369,18 @@ def process_csv(
     input_path: Path,
     output_path: Path,
     columns: ColumnMap,
-    default_year: int,
     excel_handler: ExcelHandler,
+    options: _ProcessingOptions,
 ) -> tuple[list[ParsedCase], DataFrame]:
     """Process a CSV v2 directory (MPOG supervised export).
 
     Reads matched CaseList/ProcedureList CSV pairs, processes all cases, and
-    writes a separate standalone file for any orphan procedures found.
+    writes separate standalone files for orphan blocks and neuraxial procedures.
 
     Args:
         input_path: Directory containing CSV v2 file pairs.
         output_path: Desired path for the primary output Excel file (used to
-            derive the standalone procedures filename).
+            derive standalone orphan output filenames).
         columns: Column mapping configuration.
         default_year: Fallback year used when a date cannot be parsed.
         excel_handler: ExcelHandler instance used to write standalone output.
@@ -317,28 +398,108 @@ def process_csv(
     )
 
     df, orphan_df = CsvHandler(columns).read(input_path)
-    processor = CaseProcessor(columns, default_year)
-    all_cases = processor.process_dataframe(df)
+    processor = _build_processor(columns, options)
+    all_cases = processor.process_dataframe(df, workers=options.workers)
     output_df = processor.cases_to_dataframe(all_cases)
 
     if not orphan_df.empty:
-        orphan_cases = processor.process_dataframe(orphan_df)
-        orphan_output_df = processor.procedures_to_dataframe(orphan_cases)
-        standalone_path = output_path.with_stem(output_path.stem + "_standalone")
-        excel_handler.write_excel(
-            orphan_output_df,
-            standalone_path,
-            options=ExcelWriteOptions(
-                format_type=FORMAT_TYPE_STANDALONE,
-                version=STANDALONE_OUTPUT_FORMAT_VERSION,
+        orphan_cases = processor.process_dataframe(orphan_df, workers=options.workers)
+        block_cases, neuraxial_cases = split_standalone_cases(orphan_cases)
+
+        _write_standalone_output(
+            processor=processor,
+            excel_handler=excel_handler,
+            output_path=output_path,
+            cases=block_cases,
+            spec=_StandaloneOutputSpec(
+                suffix="standalone_blocks",
+                label="Standalone blocks",
             ),
         )
-        console.print(
-            f"[cyan]Standalone procedures:[/cyan] {standalone_path} "
-            f"({len(orphan_cases)} procedure(s))"
+        _write_standalone_output(
+            processor=processor,
+            excel_handler=excel_handler,
+            output_path=output_path,
+            cases=neuraxial_cases,
+            spec=_StandaloneOutputSpec(
+                suffix="standalone_neuraxial",
+                label="Standalone neuraxial",
+            ),
         )
 
     return all_cases, output_df
+
+
+def _write_standalone_output(
+    *,
+    processor: CaseProcessor,
+    excel_handler: ExcelHandler,
+    output_path: Path,
+    cases: list[ParsedCase],
+    spec: _StandaloneOutputSpec,
+) -> None:
+    """Write one standalone orphan-procedure output when rows are present."""
+    if not cases:
+        return
+
+    standalone_output = processor.procedures_to_dataframe(cases)
+    standalone_path = output_path.with_stem(f"{output_path.stem}_{spec.suffix}")
+    excel_handler.write_excel(
+        standalone_output,
+        standalone_path,
+        options=ExcelWriteOptions(
+            format_type=FORMAT_TYPE_STANDALONE,
+            version=STANDALONE_OUTPUT_FORMAT_VERSION,
+        ),
+    )
+    console.print(
+        f"[cyan]{spec.label}:[/cyan] {standalone_path} ({len(cases)} procedure(s))"
+    )
+
+
+def _standalone_case_search_text(case: ParsedCase) -> str:
+    """Build a single uppercase search string for standalone-case routing."""
+    return " ".join(
+        value
+        for value in (
+            case.raw_anesthesia_type,
+            case.procedure,
+            case.procedure_notes,
+            case.nerve_block_type,
+        )
+        if value
+    ).upper()
+
+
+def is_neuraxial_standalone_case(case: ParsedCase) -> bool:
+    """Return True when standalone procedure text indicates neuraxial technique."""
+    search_text = _standalone_case_search_text(case)
+    return any(hint in search_text for hint in _NEURAXIAL_STANDALONE_HINTS)
+
+
+def is_block_standalone_case(case: ParsedCase) -> bool:
+    """Return True when standalone procedure text indicates a block technique."""
+    search_text = _standalone_case_search_text(case)
+    return any(hint in search_text for hint in _BLOCK_STANDALONE_HINTS)
+
+
+def split_standalone_cases(
+    cases: list[ParsedCase],
+) -> tuple[list[ParsedCase], list[ParsedCase]]:
+    """Split standalone orphan procedures into block and neuraxial buckets."""
+    block_cases: list[ParsedCase] = []
+    neuraxial_cases: list[ParsedCase] = []
+
+    for case in cases:
+        if is_neuraxial_standalone_case(case):
+            neuraxial_cases.append(case)
+            continue
+        if is_block_standalone_case(case) or bool(case.nerve_block_type):
+            block_cases.append(case)
+            continue
+        neuraxial_cases.append(case)
+
+    return block_cases, neuraxial_cases
 
 
 def save_validation_report(cases: list[ParsedCase], report_path: Path) -> None:
@@ -473,21 +634,27 @@ def main() -> None:
         input_path = Path(args.input_file)
         output_path = Path(args.output_file)
         excel_handler = ExcelHandler()
+        options = _ProcessingOptions(
+            default_year=args.default_year,
+            sheet_name=args.sheet,
+            use_ml=not args.no_ml,
+            ml_threshold=args.ml_threshold,
+            workers=args.workers,
+        )
 
         if args.v2:
             all_cases, output_df = process_csv(
                 input_path,
                 output_path,
                 columns,
-                args.default_year,
                 excel_handler,
+                options,
             )
         else:
             all_cases, output_df = process_excel(
                 input_path,
                 columns,
-                args.default_year,
-                args.sheet,
+                options,
             )
 
         if not all_cases:

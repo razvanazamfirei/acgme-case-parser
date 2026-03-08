@@ -171,6 +171,12 @@ class TestAnesthesiaTypeMapping:
             anesthesia_type, _warnings = processor.map_anesthesia_type(variation)
             assert anesthesia_type == AnesthesiaType.GENERAL, f"Failed for: {variation}"
 
+    def test_map_double_lumen_descriptors_as_general_anesthesia(self, processor):
+        """Double-lumen descriptors should also map to GA."""
+        for variation in ["Double lumen tube", "double-lumen ETT", "GETA with ETT"]:
+            anesthesia_type, _warnings = processor.map_anesthesia_type(variation)
+            assert anesthesia_type == AnesthesiaType.GENERAL, f"Failed for: {variation}"
+
     def test_map_mac(self, processor):
         """Test mapping MAC."""
         anesthesia_type, warnings = processor.map_anesthesia_type("MAC")
@@ -375,6 +381,28 @@ class TestEmergentFlag:
             assert result is False, f"Failed for: {value}"
 
 
+class TestStandaloneBlockDebug:
+    """Test helpers used by standalone orphan debugging output."""
+
+    def test_derive_unmatched_block_source_for_generic_fallback(self, processor):
+        """Generic peripheral fallback should preserve raw block text for debugging."""
+        result = processor._derive_unmatched_block_source(
+            raw_block_type="Serratus plane block",
+            normalized_block_type="Other - peripheral nerve blockade site",
+        )
+
+        assert result == "Serratus plane block"
+
+    def test_derive_unmatched_block_source_for_canonical_match(self, processor):
+        """Canonical mappings should not emit unmatched debug source."""
+        result = processor._derive_unmatched_block_source(
+            raw_block_type="Femoral",
+            normalized_block_type="Femoral",
+        )
+
+        assert result is None
+
+
 class TestRowProcessing:
     """Test full row processing."""
 
@@ -494,6 +522,66 @@ class TestRowProcessing:
         # Average of individual extraction confidences (each is 0.5)
         assert case.confidence_score == pytest.approx(0.5)
 
+    def test_process_row_normalizes_peripheral_block_sites(self, processor):
+        """Peripheral blocks should map to canonical site terms in output order."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "12345",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 45.0,
+            "ASA": "2",
+            "Emergent": "N",
+            "Anesthesia Type": "Peripheral nerve block",
+            "Procedure": "KNEE ARTHROSCOPY",
+            "Services": "ORTHO",
+            "Procedure Notes": "single-shot block",
+            "Nerve Block Type": "sciatic and femoral with popliteal approach",
+        })
+
+        case = processor.process_row(row)
+
+        assert case.nerve_block_type == "Femoral; Popliteal; Sciatic"
+
+    def test_process_row_maps_unknown_peripheral_block_to_other(self, processor):
+        """Peripheral block text outside the allowed set should map to Other."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "12345",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 45.0,
+            "ASA": "2",
+            "Emergent": "N",
+            "Anesthesia Type": "Peripheral nerve block",
+            "Procedure": "SHOULDER ARTHROSCOPY",
+            "Services": "ORTHO",
+            "Procedure Notes": "catheter placed",
+            "Nerve Block Type": "brachial plexus",
+        })
+
+        case = processor.process_row(row)
+
+        assert case.nerve_block_type == "Other - peripheral nerve blockade site"
+
+    def test_process_row_maps_spinal_to_lumbar_site_when_unspecified(self, processor):
+        """Spinal procedures without explicit site should default to lumbar."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "12345",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 45.0,
+            "ASA": "2",
+            "Emergent": "N",
+            "Anesthesia Type": "Spinal",
+            "Procedure": "TOTAL KNEE ARTHROPLASTY",
+            "Services": "ORTHO",
+            "Procedure Notes": None,
+            "Nerve Block Type": pd.NA,
+        })
+
+        case = processor.process_row(row)
+
+        assert case.nerve_block_type == "Lumbar"
+
     def test_process_row_infers_general_from_airway_notes(
         self, processor, default_column_map
     ):
@@ -586,6 +674,78 @@ class TestRowProcessing:
             "Inferred MAC from procedure type without airway documentation" in warning
             for warning in case.parsing_warnings
         )
+
+    def test_process_row_infers_mac_from_sedation_note_without_airway(
+        self, processor
+    ):
+        """Sedation note text should infer MAC when airway is absent."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "sedation-1",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 45.0,
+            "ASA": "2",
+            "Emergent": "N",
+            "Anesthesia Type": None,
+            "Procedure": "PORT PLACEMENT",
+            "Services": "IR",
+            "Procedure Notes": "Patient sedated but conversant throughout the case",
+        })
+
+        case = processor.process_row(row)
+
+        assert case.anesthesia_type == AnesthesiaType.MAC
+        assert case.airway_management == []
+        assert any(
+            "Inferred MAC from note text without airway documentation" in warning
+            for warning in case.parsing_warnings
+        )
+
+    def test_process_row_does_not_infer_mac_from_c_mac_device_name(self, processor):
+        """C-MAC device text should not be mistaken for MAC anesthesia."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "airway-1",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 45.0,
+            "ASA": "2",
+            "Emergent": "N",
+            "Anesthesia Type": None,
+            "Procedure": "Appendectomy",
+            "Services": "GENERAL",
+            "Procedure Notes": "C-MAC video laryngoscope available in room",
+        })
+
+        case = processor.process_row(row)
+
+        assert case.anesthesia_type == AnesthesiaType.GENERAL
+        assert case.airway_management == []
+        assert not any(
+            "Inferred MAC from note text without airway documentation" in warning
+            for warning in case.parsing_warnings
+        )
+
+    def test_process_row_extracts_double_lumen_tube_from_notes(self, processor):
+        """Double-lumen note text should produce explicit airway inference."""
+        row = pd.Series({
+            "Date": "08/27/2025",
+            "Episode ID": "thoracic-1",
+            "Anesthesiologist": "Dr. Smith",
+            "Age": 58.0,
+            "ASA": "3",
+            "Emergent": "N",
+            "Anesthesia Type": None,
+            "Procedure": "Thoracotomy",
+            "Services": "THORACIC",
+            "Procedure Notes": "Left double lumen tube placed with GlideScope",
+        })
+
+        case = processor.process_row(row)
+
+        assert case.anesthesia_type == AnesthesiaType.GENERAL
+        assert case.has_double_lumen_tube is True
+        assert AirwayManagement.DOUBLE_LUMEN_ETT in case.airway_management
+        assert AirwayManagement.ORAL_ETT in case.airway_management
 
     def test_process_row_block_procedure_with_airway_stays_general(self, processor):
         """Documented airway should still infer GA regardless of block text."""
@@ -842,6 +1002,87 @@ class TestProcessDataframeExtended:
             c.episode_id for c in cases_parallel
         ]
 
+    def test_build_chunk_spans_balances_large_batches(self, processor):
+        spans = processor._build_chunk_spans(50_000)
+
+        assert spans == [
+            (0, 12_500),
+            (12_500, 25_000),
+            (25_000, 37_500),
+            (37_500, 50_000),
+        ]
+
+    def test_process_dataframe_uses_process_chunks_when_enabled(self, processor):
+        df = pd.DataFrame([_FULL_ROW])
+        sentinel = [
+            ParsedCase(
+                raw_date=None,
+                episode_id="chunked",
+                raw_age=None,
+                raw_asa=None,
+                raw_anesthesia_type=None,
+                procedure=None,
+                procedure_notes=None,
+                responsible_provider=None,
+                case_date=date(2025, 1, 1),
+            )
+        ]
+
+        with (
+            patch.object(processor, "_should_use_process_pool", return_value=True),
+            patch.object(
+                processor,
+                "_process_rows_in_process_chunks",
+                return_value=sentinel,
+            ) as process_chunks,
+        ):
+            cases = processor.process_dataframe(df, workers=2)
+
+        process_chunks.assert_called_once_with(df, 2)
+        assert cases == sentinel
+
+    def test_process_dataframe_falls_back_after_process_chunk_failure(
+        self,
+        processor,
+        caplog,
+    ):
+        df = pd.DataFrame([_FULL_ROW])
+
+        with (
+            caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+            patch.object(processor, "_should_use_process_pool", return_value=True),
+            patch.object(
+                processor,
+                "_process_rows_in_process_chunks",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            cases = processor.process_dataframe(df, workers=2)
+
+        assert len(cases) == 1
+        assert cases[0].episode_id == "12345"
+        assert "Process chunk execution failed" in caplog.text
+
+    def test_batch_prepared_dates_preserve_case_dates_and_warnings(self, processor):
+        df = pd.DataFrame([
+            _FULL_ROW,
+            {**_FULL_ROW, "Episode ID": "missing-date", "Date": None},
+            {**_FULL_ROW, "Episode ID": "bad-date", "Date": "not-a-date"},
+        ])
+
+        cases = processor.process_dataframe(df)
+
+        assert cases[0].case_date == date(2025, 8, 27)
+        assert not any("default year" in warning for warning in cases[0].parsing_warnings)
+
+        assert cases[1].case_date == date(2025, 1, 1)
+        assert any("default year" in warning for warning in cases[1].parsing_warnings)
+
+        assert cases[2].case_date == date(2025, 1, 1)
+        assert any(
+            "Could not parse date" in warning for warning in cases[2].parsing_warnings
+        )
+
     def test_warns_on_missing_columns(self, processor, caplog):
         df = pd.DataFrame([{"SomeUnknownColumn": "value"}])
 
@@ -849,6 +1090,15 @@ class TestProcessDataframeExtended:
             processor.process_dataframe(df)
 
         assert "Missing columns" in caplog.text
+
+    def test_falls_back_when_batch_preparation_fails(self, processor):
+        df = pd.DataFrame([_FULL_ROW])
+
+        with patch.object(processor, "_prepare_rows", side_effect=RuntimeError("boom")):
+            cases = processor.process_dataframe(df)
+
+        assert len(cases) == 1
+        assert cases[0].episode_id == "12345"
 
     def test_cases_to_dataframe_column_order(self, processor):
         cases = [

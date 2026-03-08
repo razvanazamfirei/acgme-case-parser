@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from case_parser.domain import (
@@ -64,6 +66,16 @@ class TestHelperFunctions:
 
         assert len(results) == 0
 
+    def test_extract_with_context_accepts_compiled_patterns(self):
+        """Compiled regex patterns should work the same as string patterns."""
+        text = "INTUBATION performed with ETT"
+        patterns = [re.compile(r"\bintubation\b", re.IGNORECASE)]
+
+        results = extract_with_context(text, patterns)
+
+        assert len(results) == 1
+        assert "intubation" in results[0][0].lower()
+
     def test_calculate_pattern_confidence_base(self):
         """Test base confidence without supporting or negation patterns."""
         text = "Patient was intubated"
@@ -99,6 +111,18 @@ class TestHelperFunctions:
         confidence = calculate_pattern_confidence(text, primary, supporting)
 
         assert 0.0 <= confidence <= 1.0
+
+    def test_calculate_pattern_confidence_accepts_compiled_patterns(self):
+        """Compiled regex inputs should contribute to the same confidence logic."""
+        text = "No intubation performed with ETT support"
+        primary = [re.compile(r"\bintubat", re.IGNORECASE)]
+        supporting = [re.compile(r"\bETT\b", re.IGNORECASE)]
+        negation = [re.compile(r"\bno\s+", re.IGNORECASE)]
+
+        confidence = calculate_pattern_confidence(text, primary, supporting, negation)
+
+        assert 0.0 <= confidence <= 1.0
+        assert confidence == pytest.approx(0.3)
 
     def test_clean_names_basic(self):
         """Test basic name cleaning."""
@@ -148,7 +172,18 @@ class TestAirwayManagementExtraction:
         airway, findings = extract_airway_management(notes)
 
         assert AirwayManagement.NASAL_ETT in airway
-        assert any(f.value == AirwayManagement.ORAL_ETT.value for f in findings)
+        assert any(f.value == AirwayManagement.NASAL_ETT.value for f in findings)
+
+    def test_extract_double_lumen_tube(self):
+        """Explicit double-lumen tube text should be preserved as its own finding."""
+        notes = "Left double lumen tube placed for thoracic procedure"
+        airway, findings = extract_airway_management(notes)
+
+        assert AirwayManagement.DOUBLE_LUMEN_ETT in airway
+        assert AirwayManagement.ORAL_ETT in airway
+        assert any(
+            f.value == AirwayManagement.DOUBLE_LUMEN_ETT.value for f in findings
+        )
 
     def test_extract_direct_laryngoscope(self):
         """Test direct laryngoscope extraction."""
