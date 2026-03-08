@@ -171,7 +171,6 @@ def test_explicit_airway_and_ga_mac_inference_helpers():
         anesthesia_type=AnesthesiaType.GENERAL,
         airway_management=[
             AirwayManagement.DOUBLE_LUMEN_ETT,
-            AirwayManagement.ORAL_ETT,
         ],
     )
 

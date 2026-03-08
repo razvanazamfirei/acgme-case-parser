@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Protocol, TypedDict
 
 from ..domain import ProcedureCategory
 from ..patterns.categorization import categorize_procedure, categorize_procedures
@@ -29,7 +30,7 @@ class MLPredictorLike(Protocol):
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> tuple[Any, list[float]]: ...
+    ) -> tuple[Sequence[str], list[float]]: ...
 
 
 class ClassificationResult(TypedDict):

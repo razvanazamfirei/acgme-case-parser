@@ -275,9 +275,32 @@ def test_normalize_orphan_columns_maps_required_columns():
     # PrimaryBlock maps to nerve block type
     assert pd.isna(result.loc[0, column_map.nerve_block_type])
     assert result.loc[1, column_map.nerve_block_type] == "Femoral nerve block"
-    # Details maps to procedure notes
-    assert result.loc[0, column_map.procedure_notes] == "performing provider details"
-    assert pd.isna(result.loc[1, column_map.procedure_notes])
+    # Orphan notes preserve technique and detail text like matched rows do.
+    assert result.loc[0, column_map.procedure_notes] == (
+        "Labor Epidural\nperforming provider details"
+    )
+    assert result.loc[1, column_map.procedure_notes] == "Peripheral nerve block"
+
+
+def test_normalize_orphan_columns_preserves_comment_and_optional_airway_text():
+    column_map = ColumnMap()
+    orphan_df = pd.DataFrame({
+        "MPOG_Case_ID": ["ORPHAN-3"],
+        "ProcedureName": ["Intubation routine"],
+        "Comment": ["Easy mask ventilation"],
+        "Details": ["Left double lumen tube placed"],
+        "Airway_Type": ["Intubation routine"],
+        "Airway_Details": ["Video laryngoscopy"],
+    })
+
+    result = CsvHandler(column_map).normalize_orphan_columns(orphan_df)
+
+    assert result.loc[0, column_map.procedure_notes] == (
+        "Intubation routine\n"
+        "Easy mask ventilation\n"
+        "Video laryngoscopy\n"
+        "Left double lumen tube placed"
+    )
 
 
 def test_normalize_orphan_columns_extracts_asa_date_and_attending():

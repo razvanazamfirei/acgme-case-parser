@@ -12,8 +12,8 @@ For implementation details and pattern definitions, see:
 
 from __future__ import annotations
 
+import math
 import re
-from typing import Any
 
 import pandas as pd
 
@@ -32,7 +32,17 @@ __all__ = [
 ]
 
 
-def clean_names(name: Any) -> str:
+def _is_missing_scalar(value: object) -> bool:
+    """Return True for scalar missing-value sentinels handled by these helpers."""
+    if value is None or value is pd.NA or value is pd.NaT:
+        return True
+    try:
+        return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def clean_names(name: object) -> str:
     """
     Clean and standardize provider names.
 
@@ -48,7 +58,7 @@ def clean_names(name: Any) -> str:
         clean_names("Smith, John MD")
         # Returns: "Smith, John"
     """
-    if pd.isna(name):
+    if _is_missing_scalar(name):
         return ""
     # Take only the first attending if multiple are listed
     name = str(name).split(";")[0].strip()
@@ -59,7 +69,7 @@ def clean_names(name: Any) -> str:
     return re.sub(r"\s+", " ", name)
 
 
-def extract_attending(value: Any) -> str:
+def extract_attending(value: object) -> str:
     """Clean an attending name by removing timestamps and extra entries.
 
     Input format: "DOE, JOHN@2023-01-01 08:00:00" or semicolon-separated list.
@@ -74,7 +84,7 @@ def extract_attending(value: Any) -> str:
         First attending name with the timestamp removed, or an empty string
         if value is NaN.
     """
-    if pd.isna(value):
+    if _is_missing_scalar(value):
         return ""
     first_part = str(value).split(";")[0]
     return first_part.split("@")[0].strip()

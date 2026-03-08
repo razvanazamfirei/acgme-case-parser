@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import multiprocessing as mp
+import threading
 from collections.abc import Hashable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ _CANONICAL_BLOCK_SITE_TERMS = {
 _GENERIC_PERIPHERAL_BLOCK_SITE = "Other - peripheral nerve blockade site"
 _PROCESS_POOL_MIN_ROWS = 25_000
 _PROCESS_POOL_TARGET_CHUNK_ROWS = 12_500
+_PROCESS_CHUNK_LOCK = threading.Lock()
 _PROCESS_CHUNK_STATE: dict[str, Any] = {
     "df": None,
     "processor": None,
@@ -779,7 +781,7 @@ class CaseProcessor:
                 date_preparations,
                 services_list,
                 classifications,
-                strict=False,
+                strict=True,
             )
         ]
 
@@ -878,26 +880,32 @@ class CaseProcessor:
         if not chunk_spans:
             return []
 
-        _PROCESS_CHUNK_STATE["df"] = df
-        _PROCESS_CHUNK_STATE["processor"] = None
+        if not _PROCESS_CHUNK_LOCK.acquire(blocking=False):
+            raise RuntimeError("process chunk state is already in use")
+
         try:
-            with ProcessPoolExecutor(
-                max_workers=min(workers, len(chunk_spans)),
-                mp_context=context,
-                initializer=_init_process_chunk_worker,
-                initargs=(
-                    self.column_map,
-                    self.default_year,
-                    self._use_ml,
-                    self._ml_threshold,
-                ),
-            ) as executor:
-                chunk_results = list(
-                    executor.map(_process_dataframe_chunk, chunk_spans)
-                )
-        finally:
-            _PROCESS_CHUNK_STATE["df"] = None
+            _PROCESS_CHUNK_STATE["df"] = df
             _PROCESS_CHUNK_STATE["processor"] = None
+            try:
+                with ProcessPoolExecutor(
+                    max_workers=min(workers, len(chunk_spans)),
+                    mp_context=context,
+                    initializer=_init_process_chunk_worker,
+                    initargs=(
+                        self.column_map,
+                        self.default_year,
+                        self._use_ml,
+                        self._ml_threshold,
+                    ),
+                ) as executor:
+                    chunk_results = list(
+                        executor.map(_process_dataframe_chunk, chunk_spans)
+                    )
+            finally:
+                _PROCESS_CHUNK_STATE["df"] = None
+                _PROCESS_CHUNK_STATE["processor"] = None
+        finally:
+            _PROCESS_CHUNK_LOCK.release()
 
         return list(chain.from_iterable(chunk_results))
 

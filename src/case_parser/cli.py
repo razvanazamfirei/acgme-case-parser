@@ -467,6 +467,8 @@ def _standalone_case_search_text(case: ParsedCase) -> str:
         value
         for value in (
             case.raw_anesthesia_type,
+            case.raw_nerve_block_type,
+            case.unmatched_block_source,
             case.procedure,
             case.procedure_notes,
             case.nerve_block_type,

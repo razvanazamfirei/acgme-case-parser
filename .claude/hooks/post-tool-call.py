@@ -6,7 +6,7 @@ import tempfile
 import traceback
 from collections.abc import Mapping
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from types import TracebackType
@@ -20,7 +20,7 @@ class ProvenanceHookError(RuntimeError):
     pass
 
 
-def http_request(
+def http_request(  # noqa: PLR0913
     method: str,
     host: str,
     port: int,
@@ -32,14 +32,24 @@ def http_request(
 ) -> bytes:
     with closing(HTTPConnection(host, port, timeout=timeout)) as connection:
         connection.request(method, location, body=body, headers=dict(headers or {}))
-        return connection.getresponse().read()
+        resp = connection.getresponse()
+        response_body = resp.read()
+        if not 200 <= resp.status < 300:
+            response_text = response_body.decode("utf-8", errors="replace") or "<empty>"
+            raise HTTPException(
+                f"HTTP {resp.status} {resp.reason}: {response_text}"
+            )
+        return response_body
 
 
 def get_server_port() -> int:
     claude_root = os.getenv("CLAUDE_PROJECT_DIR")
     if not claude_root:
         raise ProvenanceHookError("CLAUDE_PROJECT_DIR is not set")
-    path_hash = hashlib.md5(claude_root.encode('utf-8')).hexdigest()
+    path_hash = hashlib.md5(
+        claude_root.encode("utf-8"),
+        usedforsecurity=False,
+    ).hexdigest()
     port_file = Path(tempfile.gettempdir()) / (path_hash + PORT_FILE_SUFFIX)
 
     return int(port_file.read_text("utf-8").strip())
@@ -70,18 +80,18 @@ def send_diff_to_webserver(file_path: str, timestamp_ms: int) -> bytes:
 
     except (HTTPException, OSError, ConnectionError) as e:
         raise ProvenanceHookError(
-            f"Network error while sending diff to {url}") from e
+            f"Network error while sending diff to {url}: {e}") from e
     except Exception as e:
         raise ProvenanceHookError(
             f"Unknown error while sending diff to {url}") from e
 
 
 def extract_file_path(tool_name: str, tool_input: Mapping[str, Any]) -> str:
-    if tool_name in ["Write", "Edit", "MultiEdit"]:
-        return tool_input.get('file_path', 'unknown')
+    if tool_name in {"Write", "Edit", "MultiEdit"}:
+        return tool_input.get("file_path", "unknown")
     if tool_name == "NotebookEdit":
-        return tool_input.get('notebook_path', 'unknown')
-    return 'unknown'
+        return tool_input.get("notebook_path", "unknown")
+    return "unknown"
 
 
 def excepthook(
@@ -95,19 +105,20 @@ def excepthook(
 
 def main() -> int:
     data = json.load(sys.stdin)
-    tool_name = data.get('tool_name', 'unknown')
+    tool_name = data.get("tool_name", "unknown")
 
     modification_tools = [
         "Write", "Edit", "MultiEdit", "NotebookEdit"
     ]
 
     if tool_name in modification_tools:
-        tool_input = data.get('tool_input', {})
+        tool_input = data.get("tool_input", {})
         file_path = extract_file_path(tool_name, tool_input)
         if file_path:
-            timestamp_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            timestamp_ms = int(datetime.now(UTC).timestamp() * 1000)
             send_diff_to_webserver(file_path, timestamp_ms)
     return 0
+
 
 if __name__ == "__main__":
     sys.excepthook = excepthook

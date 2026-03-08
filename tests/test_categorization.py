@@ -257,6 +257,11 @@ class TestCategorizeProcedure:
         assert category == ProcedureCategory.CARDIAC_WITH_CPB
         assert warnings == []
 
+    def test_raw_string_service_is_treated_as_one_service(self):
+        category, warnings = categorize_procedure("Heart surgery", "CARDIAC")
+        assert category == ProcedureCategory.CARDIAC_WITH_CPB
+        assert warnings == []
+
     def test_apply_rule_category_cardiac(self):
         result = _apply_rule_category("Cardiac", "OFF PUMP CABG")
         assert result == ProcedureCategory.CARDIAC_WITHOUT_CPB
@@ -278,3 +283,7 @@ def test_normalize_services_skips_null_and_string_sentinels():
     assert _normalize_services(["cardiac", None, np.nan, pd.NA, "nan", "None", "<NA>"]) == (
         "CARDIAC",
     )
+
+
+def test_normalize_services_treats_raw_string_as_single_token():
+    assert _normalize_services("cardiac") == ("CARDIAC",)

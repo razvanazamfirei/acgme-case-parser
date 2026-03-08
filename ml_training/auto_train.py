@@ -15,8 +15,15 @@ from rich.panel import Panel
 from rich.table import Table
 from sklearn.model_selection import train_test_split
 
-from case_parser.ml.predictor import MLPredictor
-from ml_training.utils import normalize_category_label, run_python_script
+try:
+    from case_parser.ml.predictor import MLPredictor
+    from ml_training.utils import normalize_category_label, run_python_script
+except ImportError:
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from case_parser.ml.predictor import MLPredictor
+    from ml_training.utils import normalize_category_label, run_python_script
 
 console = Console()
 

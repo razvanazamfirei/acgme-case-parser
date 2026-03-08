@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
+import case_parser.processor as processor_module
 from case_parser.domain import (
     AgeCategory,
     AirwayManagement,
@@ -1117,6 +1118,44 @@ class TestProcessDataframeExtended:
 
         assert len(cases) == 1
         assert cases[0].episode_id == "12345"
+
+    def test_falls_back_when_batch_classification_lengths_mismatch(
+        self,
+        processor,
+        caplog,
+    ):
+        df = pd.DataFrame([_FULL_ROW])
+
+        with (
+            caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+            patch.object(processor.classifier, "classify_many", return_value=[]),
+        ):
+            cases = processor.process_dataframe(df)
+
+        assert len(cases) == 1
+        assert cases[0].episode_id == "12345"
+        assert "Batch row preparation failed" in caplog.text
+
+    def test_process_dataframe_falls_back_when_process_chunk_state_is_busy(
+        self,
+        processor,
+        caplog,
+    ):
+        df = pd.DataFrame([_FULL_ROW])
+
+        processor_module._PROCESS_CHUNK_LOCK.acquire()
+        try:
+            with (
+                caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+                patch.object(processor, "_should_use_process_pool", return_value=True),
+            ):
+                cases = processor.process_dataframe(df, workers=2)
+        finally:
+            processor_module._PROCESS_CHUNK_LOCK.release()
+
+        assert len(cases) == 1
+        assert cases[0].episode_id == "12345"
+        assert "Process chunk execution failed" in caplog.text
 
     def test_cases_to_dataframe_column_order(self, processor):
         cases = [

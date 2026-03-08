@@ -8,13 +8,15 @@ from case_parser.cli import split_standalone_cases
 from case_parser.domain import ParsedCase
 
 
-def _standalone_case(
+def _standalone_case(  # noqa: PLR0913
     *,
     case_id: str,
     procedure_name: str | None,
     procedure: str | None = None,
     notes: str | None = None,
     block: str | None = None,
+    raw_block: str | None = None,
+    unmatched_block_source: str | None = None,
 ) -> ParsedCase:
     return ParsedCase(
         raw_date="2025-01-01",
@@ -28,6 +30,8 @@ def _standalone_case(
         procedure_notes=notes,
         responsible_provider="SMITH, JANE",
         nerve_block_type=block,
+        raw_nerve_block_type=raw_block,
+        unmatched_block_source=unmatched_block_source,
         case_date=date(2025, 1, 1),
     )
 
@@ -84,3 +88,18 @@ def test_split_standalone_cases_routes_canonical_neuraxial_sites_correctly():
 
     assert block_cases == []
     assert [c.episode_id for c in neuraxial_cases] == ["N3"]
+
+
+def test_split_standalone_cases_uses_preserved_raw_block_text():
+    cases = [
+        _standalone_case(
+            case_id="B3",
+            procedure_name="Unknown Procedure",
+            unmatched_block_source="Serratus plane block",
+        ),
+    ]
+
+    block_cases, neuraxial_cases = split_standalone_cases(cases)
+
+    assert [c.episode_id for c in block_cases] == ["B3"]
+    assert neuraxial_cases == []

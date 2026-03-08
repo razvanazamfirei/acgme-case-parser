@@ -55,6 +55,23 @@ def _assemble_airway_detail(rank: int, comment: Any, details: Any) -> str | None
     return _combine_non_empty_text(comment, details)
 
 
+def _assemble_orphan_procedure_notes(
+    procedure_name: Any,
+    comment: Any,
+    details: Any,
+    airway_type: Any,
+    airway_details: Any,
+) -> str | None:
+    """Preserve orphan technique/comment/detail text using matched-row formatting."""
+    return _combine_non_empty_text(
+        procedure_name,
+        comment,
+        airway_type,
+        airway_details,
+        details,
+    )
+
+
 @dataclass(frozen=True)
 class ExcelWriteOptions:
     """Options controlling Excel output layout and metadata sheets."""
@@ -77,9 +94,9 @@ def read_excel(
 
     Args:
         file_path: Path to the Excel file
-        sheet_name: Sheet name or index to read. ``None`` requests all sheets
-            from pandas and will raise ``TypeError`` because this helper only
-            supports a single resolved sheet.
+        sheet_name: Sheet name or index to read. ``None`` is not supported
+            because this helper intentionally rejects pandas' load-all-sheets
+            behavior.
 
     Returns:
         DataFrame containing the sheet data
@@ -87,7 +104,8 @@ def read_excel(
     Raises:
         FileNotFoundError: If the file does not exist at file_path.
         ValueError: If the file extension is not ``.xlsx`` or ``.xls``.
-        TypeError: If sheet_name resolves to multiple sheets.
+        TypeError: If ``sheet_name`` is ``None`` or otherwise resolves to
+            multiple sheets.
     """
     file_path = Path(file_path)
 
@@ -97,6 +115,11 @@ def read_excel(
     if file_path.suffix.lower() not in {".xlsx", ".xls"}:
         raise ValueError(
             f"Unsupported file format: {file_path.suffix}. Expected .xlsx or .xls"
+        )
+
+    if sheet_name is None:
+        raise TypeError(
+            "sheet_name=None is not supported; provide a sheet name or index"
         )
 
     try:
@@ -597,9 +620,47 @@ class CsvHandler:
         result[column_map.emergent] = orphan_df.get("Emergency")
         result[column_map.final_anesthesia_type] = orphan_df.get("ProcedureName")
         result[column_map.nerve_block_type] = orphan_df.get("PrimaryBlock")
-        result[column_map.procedure_notes] = orphan_df.get("Details")
         result[column_map.procedure] = orphan_df.get("AIMS_Actual_Procedure_Text")
         result[column_map.services] = ""
+
+        procedure_names = (
+            orphan_df["ProcedureName"]
+            if "ProcedureName" in orphan_df.columns
+            else [None] * len(orphan_df)
+        )
+        comment_values = (
+            orphan_df["Comment"]
+            if "Comment" in orphan_df.columns
+            else [None] * len(orphan_df)
+        )
+        detail_values = (
+            orphan_df["Details"]
+            if "Details" in orphan_df.columns
+            else [None] * len(orphan_df)
+        )
+        airway_types = (
+            orphan_df["Airway_Type"]
+            if "Airway_Type" in orphan_df.columns
+            else [None] * len(orphan_df)
+        )
+        airway_details = (
+            orphan_df["Airway_Details"]
+            if "Airway_Details" in orphan_df.columns
+            else [None] * len(orphan_df)
+        )
+        result[column_map.procedure_notes] = list(
+            starmap(
+                _assemble_orphan_procedure_notes,
+                zip(
+                    procedure_names,
+                    comment_values,
+                    detail_values,
+                    airway_types,
+                    airway_details,
+                    strict=False,
+                ),
+            )
+        )
 
         if "AnesAttendingNames" in orphan_df.columns:
             result[column_map.anesthesiologist] = orphan_df["AnesAttendingNames"].apply(

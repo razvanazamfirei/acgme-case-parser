@@ -8,9 +8,9 @@ function that encapsulates the specific rules for that type.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from functools import lru_cache
-from typing import Any, cast
 
 import pandas as pd
 
@@ -252,7 +252,7 @@ def _fallback_categories_from_text(procedure_text: str) -> list[ProcedureCategor
 
 
 def categorize_procedure(
-    procedure: str | None, services: Sequence[object]
+    procedure: str | None, services: Sequence[object] | str
 ) -> tuple[ProcedureCategory, list[str]]:
     """
     Categorize a procedure based on services and procedure text.
@@ -265,8 +265,8 @@ def categorize_procedure(
 
     Args:
         procedure: Procedure description text
-        services: Sequence of raw service values. Missing/null sentinels are
-            ignored during normalization.
+        services: Sequence of raw service values or a single raw service
+            string. Missing/null sentinels are ignored during normalization.
 
     Returns:
         Tuple of (ProcedureCategory, warnings_list)
@@ -282,14 +282,14 @@ def categorize_procedure(
 
 def categorize_procedures(
     procedures: Sequence[str | None],
-    services_list: Sequence[Sequence[object]],
+    services_list: Sequence[Sequence[object] | str],
 ) -> list[tuple[ProcedureCategory, list[str]]]:
     """Categorize multiple procedures while reusing cached normalization."""
     if len(procedures) != len(services_list):
         raise ValueError("services_list must match procedures length")
 
     results: list[tuple[ProcedureCategory, list[str]]] = []
-    for procedure, services in zip(procedures, services_list, strict=False):
+    for procedure, services in zip(procedures, services_list, strict=True):
         category, warnings = _categorize_procedure_cached(
             _normalize_procedure_text(procedure),
             _normalize_services(services),
@@ -305,12 +305,18 @@ def _normalize_procedure_text(procedure: str | None) -> str:
     return str(procedure).upper()
 
 
-def _normalize_services(services: Sequence[object]) -> tuple[str, ...]:
+def _normalize_services(services: Sequence[object] | str) -> tuple[str, ...]:
     """Normalize raw service values to uppercase immutable tuples for caching."""
+    raw_services: Sequence[object] = (
+        (services,) if isinstance(services, str) else services
+    )
+
     normalized: list[str] = []
-    for service in services:
+    for service in raw_services:
+        if service is None or service is pd.NA or service is pd.NaT:
+            continue
         try:
-            if bool(pd.isna(cast(Any, service))):
+            if math.isnan(float(service)):
                 continue
         except (TypeError, ValueError):
             pass
