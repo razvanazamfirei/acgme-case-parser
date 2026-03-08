@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
+from case_parser.ml.config import DEFAULT_ML_THRESHOLD
 from case_parser.ml.predictor import MLPredictor
 from case_parser.patterns.categorization import categorize_procedure
 
@@ -73,6 +74,9 @@ DEFAULT_RETRAIN_DATA = (
 )
 DEFAULT_REMAINING_EVAL_DATA = (
     PROJECT_ROOT / "ml_training_data" / "unseen_eval_remaining.csv"
+)
+DEFAULT_AIRWAY_REVIEW_OUTPUT = (
+    PROJECT_ROOT / "ml_training_data" / "airway_review_candidates.csv"
 )
 OVERRIDE_CORRECTION_MULTIPLIER = 3
 
@@ -1509,6 +1513,9 @@ def _evaluate_command(args: argparse.Namespace) -> int:
         str(Path(args.model).resolve()),
         str(data_path),
     ]
+    if args.label_column is not None:
+        argv.extend(["--label-column", args.label_column])
+    argv.extend(["--hybrid-threshold", str(args.hybrid_threshold)])
     return _run_script_stage("Evaluation", script_path, argv)
 
 
@@ -1563,6 +1570,22 @@ def _run_command_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _airway_review_set_command(args: argparse.Namespace) -> int:
+    """Run the airway/anesthesia review-set generator."""
+    script_path = PROJECT_ROOT / "ml_training" / "airway_review.py"
+    argv = [
+        "--base-dir",
+        str(Path(args.base_dir).resolve()),
+        "--output",
+        str(Path(args.output).resolve()),
+        "--max-cases",
+        str(args.max_cases),
+        "--default-year",
+        str(args.default_year),
+    ]
+    return _run_script_stage("Airway Review Set", script_path, argv)
+
+
 def _print_cli_overview() -> None:
     """Render quick command overview for interactive help."""
     commands = Table(title="Commands", border_style="cyan")
@@ -1585,6 +1608,11 @@ def _print_cli_overview() -> None:
         "Evaluate model on default or explicit CSV",
         "evaluate",
     )
+    commands.add_row(
+        "airway-review-set",
+        "Build manual review set for DLT / route / GA-MAC",
+        "airway-review-set --max-cases 600",
+    )
     commands.add_row("train", "Run training pipeline stages directly", "train --force")
 
     defaults = Table(title="Built-In Paths", border_style="green")
@@ -1595,6 +1623,7 @@ def _print_cli_overview() -> None:
     defaults.add_row("Seen split", str(DEFAULT_SEEN_DATA))
     defaults.add_row("Unseen split", str(DEFAULT_UNSEEN_DATA))
     defaults.add_row("Remaining unseen", str(DEFAULT_REMAINING_EVAL_DATA))
+    defaults.add_row("Airway review set", str(DEFAULT_AIRWAY_REVIEW_OUTPUT))
 
     workflow = (
         "Recommended loop:\n"
@@ -1616,6 +1645,8 @@ def _parser_epilog() -> str:
         "  Review + override loop:\n"
         "    python ml_training/workbench.py review --resume\n"
         "    python ml_training/workbench.py retrain --force\n"
+        "  Build airway/anesthesia review set:\n"
+        "    python ml_training/workbench.py airway-review-set\n"
         "  Evaluate latest model:\n"
         "    python ml_training/workbench.py evaluate\n"
     )
@@ -1682,6 +1713,20 @@ def _configure_evaluate_parser(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Evaluation CSV path "
             "(default: unseen_eval_remaining.csv if present, else unseen_eval.csv)"
+        ),
+    )
+    eval_parser.add_argument(
+        "--label-column",
+        default=None,
+        help="Optional ground-truth label column (auto-detected when omitted)",
+    )
+    eval_parser.add_argument(
+        "--hybrid-threshold",
+        type=float,
+        default=DEFAULT_ML_THRESHOLD,
+        help=(
+            "Hybrid threshold used when reporting labeled accuracy "
+            f"(default: {DEFAULT_ML_THRESHOLD:.2f})"
         ),
     )
 
@@ -1757,6 +1802,31 @@ def _configure_run_parser(subparsers: argparse._SubParsersAction) -> None:
     )
 
 
+def _configure_airway_review_set_parser(
+    subparsers: argparse._SubParsersAction,
+) -> None:
+    parser = subparsers.add_parser(
+        "airway-review-set",
+        help="Build manual review set for airway/anesthesia targets",
+        description=(
+            "Scan the supervised CSV corpus and build a focused manual-review "
+            "CSV for double-lumen tube, oral-vs-nasal route, and GA-vs-MAC."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python ml_training/workbench.py airway-review-set\n"
+            "  python ml_training/workbench.py airway-review-set --max-cases 800\n"
+            "  python ml_training/workbench.py airway-review-set "
+            "--output ml_training_data/airway_review_candidates.csv"
+        ),
+    )
+    parser.add_argument("--base-dir", default=PROJECT_ROOT / "Output-Supervised")
+    parser.add_argument("--output", default=DEFAULT_AIRWAY_REVIEW_OUTPUT)
+    parser.add_argument("--max-cases", type=int, default=600)
+    parser.add_argument("--default-year", type=int, default=2025)
+
+
 def _configure_retrain_parser(subparsers: argparse._SubParsersAction) -> None:
     retrain_parser = subparsers.add_parser(
         "retrain",
@@ -1813,6 +1883,7 @@ def build_parser() -> argparse.ArgumentParser:
     _configure_evaluate_parser(subparsers)
     _configure_review_parser(subparsers)
     _configure_run_parser(subparsers)
+    _configure_airway_review_set_parser(subparsers)
     _configure_retrain_parser(subparsers)
 
     return parser
@@ -1848,6 +1919,7 @@ def main() -> int:
         "evaluate": _evaluate_command,
         "review": _review_command,
         "run": _run_command_chain,
+        "airway-review-set": _airway_review_set_command,
         "retrain": _retrain_command,
     }
     handler = handlers.get(args.command)

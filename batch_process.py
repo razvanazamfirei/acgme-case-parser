@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import os
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import warnings
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,12 +52,35 @@ logging.getLogger("case_parser").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 console = Console()
 
+_WORKER_PROCESSORS: dict[tuple[int, bool], CaseProcessor] = {}
+_SKLEARN_DELAYED_WARNING_PATTERN = r".*sklearn\.utils\.parallel\.delayed.*"
+
 
 @dataclass(frozen=True)
 class ProcessConfig:
     output_dir: Path
     columns: ColumnMap
     excel_handler: ExcelHandler
+    use_ml: bool
+
+
+def _suppress_sklearn_parallel_warning() -> None:
+    """Suppress noisy sklearn delayed/Parallel warning during batch runs."""
+    warnings.filterwarnings(
+        "ignore",
+        message=_SKLEARN_DELAYED_WARNING_PATTERN,
+        category=UserWarning,
+    )
+
+
+def _get_worker_processor(columns: ColumnMap, use_ml: bool) -> CaseProcessor:
+    """Reuse one CaseProcessor per worker process to avoid repeated model loads."""
+    cache_key = (os.getpid(), use_ml)
+    cached = _WORKER_PROCESSORS.get(cache_key)
+    if cached is None:
+        cached = CaseProcessor(columns, default_year=2025, use_ml=use_ml)
+        _WORKER_PROCESSORS[cache_key] = cached
+    return cached
 
 
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
@@ -103,8 +128,8 @@ def process_resident(
 ) -> tuple[int, tuple[str, int, str] | None]:
     """Process one resident's files and write output Excel.
 
-    Creates its own ``CaseProcessor`` so this function is safe to run in a
-    worker process (no shared ML-model state between workers).
+    Reuses one ``CaseProcessor`` per worker process to avoid repeatedly loading
+    ML artifacts for each resident.
 
     Args:
         pairs: Tuple of (name, case_file, proc_file) where name is the resident
@@ -117,7 +142,8 @@ def process_resident(
         ``(name, count, filename)`` when orphan procedures were found, else None.
     """
     name, case_file, proc_file = pairs
-    processor = CaseProcessor(config.columns, default_year=2025, use_ml=True)
+    _suppress_sklearn_parallel_warning()
+    processor = _get_worker_processor(config.columns, config.use_ml)
     formatted_name = format_name(name)
     joined, orphans = join_case_and_procedures(
         pd.read_csv(case_file),
@@ -183,6 +209,11 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Number of parallel workers for resident processing (default: 4)",
     )
+    parser.add_argument(
+        "--use-ml",
+        action="store_true",
+        help="Enable ML-enhanced procedure categorization (slower)",
+    )
     args = parser.parse_args()
     if args.workers < 1:
         parser.error("--workers must be at least 1")
@@ -218,10 +249,11 @@ def _process_in_parallel(
     config: ProcessConfig,
     workers: int,
 ) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, str]]]:
-    """Run resident processing across worker processes."""
+    """Run resident processing with backend tuned for the chosen mode."""
     total_cases = 0
     errors: list[tuple[str, str]] = []
     orphan_notices: list[tuple[str, int, str]] = []
+    executor_cls = ProcessPoolExecutor if config.use_ml else ThreadPoolExecutor
 
     with Progress(
         SpinnerColumn(),
@@ -234,9 +266,7 @@ def _process_in_parallel(
     ) as progress:
         task = progress.add_task("Processing residents", total=len(pairs))
 
-        # Parallel: each worker process gets its own Python interpreter and GIL,
-        # providing true CPU parallelism that threads cannot achieve.
-        with ProcessPoolExecutor(max_workers=workers) as executor:
+        with executor_cls(max_workers=workers) as executor:
             futures = {
                 executor.submit(process_resident, pair, config): pair[0]
                 for pair in pairs
@@ -257,6 +287,7 @@ def _process_in_parallel(
 
 
 def main() -> None:
+    _suppress_sklearn_parallel_warning()
     args = _parse_args()
     output_dir: Path = args.output_dir
     case_dir, proc_dir = _validate_input_dirs(args.base_dir)
@@ -275,6 +306,7 @@ def main() -> None:
         output_dir=output_dir,
         columns=ColumnMap(),
         excel_handler=ExcelHandler(),
+        use_ml=args.use_ml,
     )
     total_cases, errors, orphan_notices = _process_in_parallel(
         pairs, config, args.workers

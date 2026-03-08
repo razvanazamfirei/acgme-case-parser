@@ -52,6 +52,24 @@ python ml_training/workbench.py review \
   --ui classic
 ```
 
+## Build airway/anesthesia review set
+
+Generate a focused manual-review CSV for:
+- double-lumen tube
+- GA vs MAC
+- oral vs nasal tube route
+
+```bash
+python ml_training/workbench.py airway-review-set --max-cases 600
+```
+
+Default output:
+- `ml_training_data/airway_review_candidates.csv`
+
+The generator scans the supervised CSV corpus, preserves available technique-level
+airway note text, prioritizes likely thoracic/DLT cases, route-specific cases,
+and GA/MAC inference cases, then emits blank label columns for manual review.
+
 ## Retrain with your overrides
 
 After reviewing cases and writing `ml_training_data/review_labels.csv`, run:
@@ -86,10 +104,30 @@ python ml_training/workbench.py evaluate \
   --data ml_training_data/unseen_eval.csv
 ```
 
+Evaluate against reviewed labels and report rule/ML/hybrid accuracy:
+
+```bash
+python ml_training/workbench.py evaluate \
+  --data ml_training_data/review_labels.csv \
+  --label-column human_category
+```
+
 Or use built-in default eval path:
 
 ```bash
 python ml_training/workbench.py evaluate
+```
+
+Override the runtime hybrid threshold without editing code:
+
+```bash
+CASE_PARSER_ML_THRESHOLD=0.65 case-parser input.xlsx output.xlsx
+```
+
+Force inference-time sklearn estimators to use a specific `n_jobs` value:
+
+```bash
+CASE_PARSER_ML_INFERENCE_JOBS=1 case-parser input.xlsx output.xlsx
 ```
 
 ## Lower-level scripts (still supported)

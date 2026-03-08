@@ -22,6 +22,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from case_parser.ml.inputs import resolve_service_column
 from case_parser.patterns.categorization import categorize_procedure
 
 console = Console()
@@ -42,6 +43,7 @@ def process_single_file(
     """
     try:
         df = pd.read_csv(file_path)
+        service_column = resolve_service_column(df)
         if sample_size and len(df) > sample_size:
             df = df.sample(n=sample_size, random_state=42)
 
@@ -55,6 +57,9 @@ def process_single_file(
             cases.append({
                 "file": file_path.name,
                 "procedure": procedure,
+                "service_text": ""
+                if service_column is None
+                else str(row.get(service_column, "") or ""),
                 "rule_category": category,
                 "warnings": "; ".join(warnings) if warnings else "",
                 "age": row.get("AIMS_Patient_Age_Years"),
