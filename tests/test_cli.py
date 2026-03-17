@@ -62,7 +62,7 @@ def test_split_standalone_cases_routes_blocks_and_neuraxial():
         _standalone_case(case_id="N2", procedure_name="CSE", procedure="CSE"),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B1"]
     assert [c.episode_id for c in neuraxial_cases] == ["N1", "N2"]
@@ -77,7 +77,7 @@ def test_split_standalone_cases_treats_block_site_only_as_block():
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B2"]
     assert neuraxial_cases == []
@@ -88,7 +88,7 @@ def test_split_standalone_cases_excludes_unknown_non_ob_non_block_cases():
         _standalone_case(case_id="X1", procedure_name="Unknown Procedure"),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert block_cases == []
     assert neuraxial_cases == []
@@ -104,7 +104,7 @@ def test_split_standalone_cases_routes_ob_category_without_keyword():
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert block_cases == []
     assert [c.episode_id for c in neuraxial_cases] == ["N3"]
@@ -119,7 +119,7 @@ def test_split_standalone_cases_uses_preserved_raw_block_text():
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B3"]
     assert neuraxial_cases == []
@@ -135,7 +135,7 @@ def test_split_standalone_cases_prefers_normalized_peripheral_block_over_text_hi
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B4"]
     assert neuraxial_cases == []
@@ -184,7 +184,7 @@ def test_process_csv_returns_standalone_case_count(tmp_path: Path):
             options=options,
         )
 
-    assert result.cases == []
+    assert result.cases == orphan_cases
     assert result.output_df.empty
     assert result.standalone_case_count == 2
     assert write_standalone.call_count == 2

@@ -167,18 +167,18 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
             config,
         )
 
-    resident_dir = config.output_dir / "Jane Doe"
+    resident_dir = config.output_dir / "DOE_JANE"
     assert case_count == 1
     assert orphan_notice == (
-        "DOE_JANE",
+        "Jane Doe",
         2,
-        ["Jane Doe_blocks.xlsx", "Jane Doe_ob.xlsx"],
+        ["DOE_JANE_blocks.xlsx", "DOE_JANE_ob.xlsx"],
     )
     assert resident_dir.is_dir()
     assert config.excel_handler.write_excel.call_args_list == [
         call(
             processor.procedures_to_dataframe.return_value,
-            resident_dir / "Jane Doe_blocks.xlsx",
+            resident_dir / "DOE_JANE_blocks.xlsx",
             options=batch_process.ExcelWriteOptions(
                 format_type=batch_process.FORMAT_TYPE_STANDALONE,
                 version=batch_process.STANDALONE_OUTPUT_FORMAT_VERSION,
@@ -186,7 +186,7 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
         ),
         call(
             processor.procedures_to_dataframe.return_value,
-            resident_dir / "Jane Doe_ob.xlsx",
+            resident_dir / "DOE_JANE_ob.xlsx",
             options=batch_process.ExcelWriteOptions(
                 format_type=batch_process.FORMAT_TYPE_STANDALONE,
                 version=batch_process.STANDALONE_OUTPUT_FORMAT_VERSION,
@@ -194,7 +194,7 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
         ),
         call(
             processor.cases_to_dataframe.return_value,
-            resident_dir / "Jane Doe_all_cases.xlsx",
+            resident_dir / "DOE_JANE_all_cases.xlsx",
             options=batch_process.ExcelWriteOptions(
                 fixed_widths={"Original Procedure": 12},
                 format_type=batch_process.FORMAT_TYPE_CASELOG,

@@ -310,12 +310,10 @@ class CaseProcessor:
             classifications,
             strict=True,
         ):
-            classified_categories.append(
-                (
-                    classification["category"],
-                    list(classification.get("warnings", [])),
-                )
-            )
+            classified_categories.append((
+                classification["category"],
+                list(classification.get("warnings", [])),
+            ))
         return classified_categories
 
     @staticmethod
@@ -597,9 +595,9 @@ class CaseProcessor:
         procedure_category, proc_warnings = (
             (prepared.procedure_category, prepared.procedure_warnings)
             if prepared is not None
-            else self._classify_categorization_inputs(
-                [self._build_categorization_input_from_row(row, services)]
-            )[0]
+            else self._classify_categorization_inputs([
+                self._build_categorization_input_from_row(row, services)
+            ])[0]
         )
         all_warnings.extend(proc_warnings)
 

@@ -53,10 +53,13 @@ def _discover_available_entries(input_dir: Path) -> tuple[_EntryKind, dict[str, 
 
 def _copy_matched_output(entry_kind: _EntryKind, src: Path, output_dir: Path) -> None:
     """Copy one matched resident output into the destination directory."""
+    target = output_dir / src.name
     if entry_kind == "directory":
-        shutil.copytree(src, output_dir / src.name, dirs_exist_ok=True)
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(src, target)
         return
-    shutil.copy2(src, output_dir / src.name)
+    shutil.copy2(src, target)
 
 
 def main() -> None:
@@ -102,6 +105,10 @@ def main() -> None:
 
     if not input_dir.exists():
         print(f"Error: input directory not found: {input_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    if not input_dir.is_dir():
+        print(f"Error: input path is not a directory: {input_dir}", file=sys.stderr)
         sys.exit(1)
 
     if not names_file.exists():

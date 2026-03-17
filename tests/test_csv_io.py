@@ -295,9 +295,7 @@ def test_normalize_orphan_columns_preserves_comment_and_detail_text():
     result = CsvHandler(column_map).normalize_orphan_columns(orphan_df)
 
     assert result.loc[0, column_map.procedure_notes] == (
-        "Intubation routine\n"
-        "Easy mask ventilation\n"
-        "Left double lumen tube placed"
+        "Intubation routine\nEasy mask ventilation\nLeft double lumen tube placed"
     )
 
 

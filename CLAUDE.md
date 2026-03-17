@@ -27,6 +27,7 @@ The tool can process multiple Excel files from a directory and combine them into
 - **Validation**: Each file is validated separately, with a combined summary
 
 **Use Cases**:
+
 - Combining multiple months of case logs into one file
 - Processing cases from multiple residents
 - Merging data from different hospital sites
@@ -48,7 +49,7 @@ Two standalone scripts for working with supervised export data:
 
 - **`batch_process.py`**: Processes all residents in an `Output-Supervised/`
   directory tree, writes one folder per resident to `Output/`
-- **`sort-logs.py`**: Matches Excel files to a names list and copies matched
+- **`sort_logs.py`**: Matches Excel files to a names list and copies matched
   files to `Output-Residents/`
 
 Both accept CLI arguments — run with `--help` for options.

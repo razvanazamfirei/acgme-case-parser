@@ -17,32 +17,28 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "certifi==2026.2.25",
-  "charset-normalizer==3.4.5",
   "numpy>=2.4.2",
   "openpyxl>=3.1.5",
   "pandas>=3.0.1",
   "pydantic>=2.12.5",
   "rich>=14.3.3",
-  "ruff==0.15.5",
   "scikit-learn>=1.6",
   "scipy>=1.17.1",
-  "scipy-stubs==1.17.1.1",
-  "textual==8.0.2",
-  "ty==0.0.21",
-  "types-pytz==2026.1.1.20260304",
 ]
 scripts.case-parser = "case_parser.cli:main"
 
 [dependency-groups]
 dev = [
+  "certifi>=2025.2.25",
+  "charset-normalizer>=3.4.1",
   "pandas-stubs~=3.0.0",
   "pytest>=9.0.2",
   "pytest-cov>=6.1.1",
-  "ruff>=0.15.4",
+  "ruff>=0.15.5",
   "scipy-stubs>=1.17",
-  "ty>=0.0.20",
-  "types-pytz>=2025.2.0.20251108",
+  "textual>=8.0.2",
+  "ty>=0.0.21",
+  "types-pytz>=2026.1.1.20260304",
 ]
 ml = [
   "textual>=8.0.1",

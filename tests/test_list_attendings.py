@@ -14,7 +14,7 @@ def test_collect_attending_counts_splits_deduplicates_and_counts(
     case_dir.mkdir()
     procedure_dir.mkdir()
     resident_list = tmp_path / "anesthesia-residents.txt"
-    resident_list.write_text('Jane Doe\n', encoding='utf-8')
+    resident_list.write_text("Jane Doe\n", encoding="utf-8")
 
     (case_dir / "DOE_JANE.Supervised.CaseList.csv").write_text(
         (
@@ -26,17 +26,11 @@ def test_collect_attending_counts_splits_deduplicates_and_counts(
         encoding="utf-8",
     )
     (case_dir / "SMITH_ALEX.Supervised.CaseList.csv").write_text(
-        (
-            "AnesAttendings,Other\n"
-            '"IGNORED, PERSON@2025-01-01 08:00:00",x\n'
-        ),
+        ('AnesAttendings,Other\n"IGNORED, PERSON@2025-01-01 08:00:00",x\n'),
         encoding="utf-8",
     )
     (procedure_dir / "procedure.csv").write_text(
-        (
-            "AnesAttendingNames,Other\n"
-            '"ADAMS, ALEX DO",x\n'
-        ),
+        ('AnesAttendingNames,Other\n"ADAMS, ALEX DO",x\n'),
         encoding="utf-8",
     )
 
@@ -81,10 +75,7 @@ def test_collect_attending_counts_matches_parenthetical_resident_names(
     resident_list.write_text("Gabriel (Gabe) Zuckerberg\n", encoding="utf-8")
 
     (case_dir / "ZUCKERBERG_GABRIEL.Supervised.CaseList.csv").write_text(
-        (
-            "AnesAttendings\n"
-            '"DOE, JANE@2025-01-01 08:00:00"\n'
-        ),
+        ('AnesAttendings\n"DOE, JANE@2025-01-01 08:00:00"\n'),
         encoding="utf-8",
     )
 

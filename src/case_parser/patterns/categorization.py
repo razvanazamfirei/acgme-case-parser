@@ -350,9 +350,9 @@ def categorize_procedure(
     Returns:
         Tuple of (ProcedureCategory, warnings_list)
     """
-    return _categorize_normalized_requests(
-        [_normalize_categorization_request(procedure, services)]
-    )[0]
+    return _categorize_normalized_requests([
+        _normalize_categorization_request(procedure, services)
+    ])[0]
 
 
 def categorize_procedures(

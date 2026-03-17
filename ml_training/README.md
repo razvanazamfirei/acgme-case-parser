@@ -21,12 +21,14 @@ python ml_training/workbench.py run --total-sample 50000 --force
 ```
 
 What this does:
+
 - prepares data (unless `--skip-prepare`)
 - splits into seen/unseen sets
 - trains on seen split
 - evaluates on unseen split
 
 Default outputs:
+
 - `ml_training_data/batch_prepared.csv`
 - `ml_training_data/seen_train.csv`
 - `ml_training_data/unseen_eval.csv`
@@ -41,6 +43,7 @@ python ml_training/workbench.py review --resume
 ```
 
 Built-in review data path:
+
 - `ml_training_data/unseen_eval_remaining.csv` (if it exists)
 - otherwise `ml_training_data/unseen_eval.csv`
 
@@ -55,6 +58,7 @@ python ml_training/workbench.py review \
 ## Build airway/anesthesia review set
 
 Generate a focused manual-review CSV for:
+
 - double-lumen tube
 - GA vs MAC
 - oral vs nasal tube route
@@ -64,6 +68,7 @@ python ml_training/workbench.py airway-review-set --max-cases 600
 ```
 
 Default output:
+
 - `ml_training_data/airway_review_candidates.csv`
 
 The generator scans the supervised CSV corpus, preserves available technique-level
@@ -79,6 +84,7 @@ python ml_training/workbench.py retrain --force
 ```
 
 What this does:
+
 - loads your overrides from `review_labels.csv`
 - relabels matching rows in `seen_train.csv`
 - promotes reviewed rows from `unseen_eval.csv` into retraining data

@@ -47,9 +47,9 @@ def test_main_copies_matching_resident_directories(
     assert (
         output_dir / "Gabriel Zuckerberg" / "Gabriel Zuckerberg_all_cases.xlsx"
     ).read_text(encoding="utf-8") == "gabriel"
-    assert (
-        output_dir / "William Ryan" / "William Ryan_all_cases.xlsx"
-    ).read_text(encoding="utf-8") == "william"
+    assert (output_dir / "William Ryan" / "William Ryan_all_cases.xlsx").read_text(
+        encoding="utf-8"
+    ) == "william"
 
     captured = capsys.readouterr()
     assert "Matched: 2/2" in captured.out

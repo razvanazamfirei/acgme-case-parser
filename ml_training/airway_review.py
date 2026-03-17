@@ -201,12 +201,9 @@ def _build_case_key(source_file: str, case: ParsedCase) -> str:
     return f"{source_file}:{case_id}:{procedure[:80]}"
 
 
-def _paired_file_stem(filename: str, *, suffixes: tuple[str, ...]) -> str:
-    """Strip the matching case/procedure CSV suffix from a paired export filename."""
-    for suffix in suffixes:
-        if filename.endswith(suffix):
-            return filename[: -len(suffix)]
-    return filename
+def _stem_normalize(name: str) -> str:
+    """Normalize a resident file stem into a stable key for pairing."""
+    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
 
 
 def _combined_case_text(case: ParsedCase) -> str:
@@ -605,17 +602,11 @@ def _discover_pair_paths(base_dir: Path) -> list[tuple[Path, Path]]:
         )
 
     case_files = {
-        _paired_file_stem(
-            path.name,
-            suffixes=(".Supervised.CaseList.csv", ".CaseList.csv"),
-        ): path
+        _stem_normalize(path.name.removesuffix(".CaseList.csv")): path
         for path in case_dir.glob("*.CaseList.csv")
     }
     proc_files = {
-        _paired_file_stem(
-            path.name,
-            suffixes=(".Supervised.ProcedureList.csv", ".ProcedureList.csv"),
-        ): path
+        _stem_normalize(path.name.removesuffix(".ProcedureList.csv")): path
         for path in proc_dir.glob("*.ProcedureList.csv")
     }
     common = sorted(set(case_files) & set(proc_files))

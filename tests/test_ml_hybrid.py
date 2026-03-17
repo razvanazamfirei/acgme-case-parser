@@ -193,6 +193,5 @@ def test_medium_confidence_ml_other_does_not_override_specific_rules():
     assert result["method"] == "rules"
     assert result["alternative"] == ProcedureCategory.OTHER
     assert result["warnings"] == [
-        "Retained specific rule result over medium-confidence ML Other "
-        "(conf=0.72)"
+        "Retained specific rule result over medium-confidence ML Other (conf=0.72)"
     ]

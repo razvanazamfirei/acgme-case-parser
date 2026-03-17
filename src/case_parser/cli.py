@@ -395,6 +395,7 @@ def process_input(
                 cases=export_cases,
                 spec=spec,
             )
+        all_cases.extend(orphan_cases)
 
     return _ProcessingResult(
         cases=all_cases,

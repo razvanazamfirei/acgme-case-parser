@@ -92,7 +92,7 @@ python batch_process.py
 python batch_process.py --base-dir /path/to/supervised --output-dir /path/to/output
 
 # Sort output files to match a names list
-python sort-logs.py --names-file residents.txt --input-dir Output
+python sort_logs.py --names-file residents.txt --input-dir Output
 ```
 
 ### Debug Categorization
@@ -207,7 +207,7 @@ case-parser/
 ├── chrome-extension/                # Chrome extension (git submodule)
 ├── tests/                           # Unit tests
 ├── batch_process.py                 # Batch process all residents
-├── sort-logs.py                     # Sort output files by names list
+├── sort_logs.py                     # Sort output files by names list
 ├── debug_categorization.py          # Categorization debugger
 ├── main.py                          # Main entry point
 ├── pyproject.toml                   # Project configuration and dependencies

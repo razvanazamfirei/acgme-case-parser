@@ -289,9 +289,7 @@ class ReviewApp(App):
         self.current_index = 0
         self.input_buffer = ""
         retrain_hint = (
-            " | complete queue => retrain"
-            if runtime.config.retrain_on_complete
-            else ""
+            " | complete queue => retrain" if runtime.config.retrain_on_complete else ""
         )
         self.status_message = (
             "f=left rule, j=right ML, space=recommendation, "
@@ -1233,9 +1231,7 @@ def _review_command(args: argparse.Namespace) -> int:
         )
         return 0
     if metrics.quit_requested:
-        console.print(
-            "[yellow]Review ended early; skipping auto-retrain.[/yellow]"
-        )
+        console.print("[yellow]Review ended early; skipping auto-retrain.[/yellow]")
         _print_next_retrain_step(args, runtime.paths.output_path)
         return 0
     if not runtime.config.retrain_on_complete:
@@ -1250,7 +1246,10 @@ def _review_command(args: argparse.Namespace) -> int:
         args,
         review_output=runtime.paths.output_path,
     )
-    return _retrain_command(retrain_args)
+    exit_code = _retrain_command(retrain_args)
+    if exit_code == 0:
+        runtime.paths.progress_path.unlink(missing_ok=True)
+    return exit_code
 
 
 def _normalize_procedure_key(value: Any) -> str:

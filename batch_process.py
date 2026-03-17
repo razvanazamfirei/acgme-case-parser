@@ -73,6 +73,11 @@ def _get_worker_processor(columns: ColumnMap, use_ml: bool) -> CaseProcessor:
     return cached
 
 
+def _stem_normalize(name: str) -> str:
+    """Normalize a resident file stem into a stable, unique filesystem key."""
+    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
+
+
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
     """Find matching case/procedure file pairs.
 
@@ -85,10 +90,11 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
         that have both a CaseList and a ProcedureList file.
     """
     case_files = {
-        f.name.removesuffix(".CaseList.csv"): f for f in case_dir.glob("*.CaseList.csv")
+        _stem_normalize(f.name.removesuffix(".CaseList.csv")): f
+        for f in case_dir.glob("*.CaseList.csv")
     }
     proc_files = {
-        f.name.removesuffix(".ProcedureList.csv"): f
+        _stem_normalize(f.name.removesuffix(".ProcedureList.csv")): f
         for f in proc_dir.glob("*.ProcedureList.csv")
     }
     common = sorted(set(case_files) & set(proc_files))
@@ -161,8 +167,9 @@ def process_resident(
     """Process one resident pair and write case-log and orphan outputs."""
     name, case_file, proc_file = pairs
     processor = _get_worker_processor(config.columns, config.use_ml)
+    stable_name = name  # Stable key from find_resident_pairs
     formatted_name = format_name(name)
-    resident_output_dir = _resident_output_dir(config.output_dir, formatted_name)
+    resident_output_dir = _resident_output_dir(config.output_dir, stable_name)
     joined, orphans = join_case_and_procedures(
         pd.read_csv(case_file),
         pd.read_csv(proc_file),
@@ -177,11 +184,11 @@ def process_resident(
             processor=processor,
             excel_handler=config.excel_handler,
             output_dir=resident_output_dir,
-            resident_name=formatted_name,
+            resident_name=stable_name,
             orphan_cases=orphan_cases,
         )
         if written_files:
-            orphan_notice = (name, written_case_count, written_files)
+            orphan_notice = (formatted_name, written_case_count, written_files)
 
     if joined.empty:
         return 0, orphan_notice
@@ -195,7 +202,7 @@ def process_resident(
 
     config.excel_handler.write_excel(
         processor.cases_to_dataframe(parsed_cases),
-        resident_output_dir / f"{formatted_name}_all_cases.xlsx",
+        resident_output_dir / f"{stable_name}_all_cases.xlsx",
         options=ExcelWriteOptions(
             fixed_widths={"Original Procedure": 12},
             format_type=FORMAT_TYPE_CASELOG,

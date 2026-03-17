@@ -355,6 +355,11 @@ class ExcelHandler:
 # ---------------------------------------------------------------------------
 
 
+def _stem_normalize(name: str) -> str:
+    """Normalize a resident file stem into a stable key for pairing."""
+    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
+
+
 def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     """Discover matching CaseList and ProcedureList CSV file pairs.
 
@@ -370,10 +375,11 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     directory = Path(directory)
 
     case_files = {
-        f.name.replace(".CaseList.csv", ""): f for f in directory.glob("*.CaseList.csv")
+        _stem_normalize(f.name.replace(".CaseList.csv", "")): f
+        for f in directory.glob("*.CaseList.csv")
     }
     proc_files = {
-        f.name.replace(".ProcedureList.csv", ""): f
+        _stem_normalize(f.name.replace(".ProcedureList.csv", "")): f
         for f in directory.glob("*.ProcedureList.csv")
     }
 
