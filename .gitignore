@@ -30,7 +30,7 @@ ml_models/
 ml_training_data/
 
 # Personal/private data
-anesthesia-residents.txt
+admin/
 
 # Virtual Environments
 .venv/
@@ -65,6 +65,8 @@ dmypy.json
 
 # Claude Code local settings
 .claude/settings.local.json
+CLAUDE.md
+.cursor
 
 # Project specific
 *.xlsx

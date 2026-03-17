@@ -24,29 +24,25 @@ name = "case-parser"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "certifi" },
-    { name = "charset-normalizer" },
     { name = "numpy" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pydantic" },
     { name = "rich" },
-    { name = "ruff" },
     { name = "scikit-learn" },
     { name = "scipy" },
-    { name = "scipy-stubs" },
-    { name = "textual" },
-    { name = "ty" },
-    { name = "types-pytz" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "certifi" },
+    { name = "charset-normalizer" },
     { name = "pandas-stubs" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "scipy-stubs" },
+    { name = "textual" },
     { name = "ty" },
     { name = "types-pytz" },
 ]
@@ -56,31 +52,27 @@ ml = [
 
 [package.metadata]
 requires-dist = [
-    { name = "certifi", specifier = "==2026.2.25" },
-    { name = "charset-normalizer", specifier = "==3.4.5" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "rich", specifier = ">=14.3.3" },
-    { name = "ruff", specifier = "==0.15.5" },
     { name = "scikit-learn", specifier = ">=1.6" },
     { name = "scipy", specifier = ">=1.17.1" },
-    { name = "scipy-stubs", specifier = "==1.17.1.1" },
-    { name = "textual", specifier = "==8.0.2" },
-    { name = "ty", specifier = "==0.0.21" },
-    { name = "types-pytz", specifier = "==2026.1.1.20260304" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "certifi", specifier = ">=2025.2.25" },
+    { name = "charset-normalizer", specifier = ">=3.4.1" },
     { name = "pandas-stubs", specifier = "~=3.0.0" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-cov", specifier = ">=6.1.1" },
-    { name = "ruff", specifier = ">=0.15.4" },
+    { name = "ruff", specifier = ">=0.15.5" },
     { name = "scipy-stubs", specifier = ">=1.17" },
-    { name = "ty", specifier = ">=0.0.20" },
-    { name = "types-pytz", specifier = ">=2025.2.0.20251108" },
+    { name = "textual", specifier = ">=8.0.2" },
+    { name = "ty", specifier = ">=0.0.21" },
+    { name = "types-pytz", specifier = ">=2026.1.1.20260304" },
 ]
 ml = [{ name = "textual", specifier = ">=8.0.1" }]
 
