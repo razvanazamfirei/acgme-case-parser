@@ -15,6 +15,9 @@ import sys
 from collections import Counter
 from numbers import Real
 from pathlib import Path
+from typing import TextIO
+
+from case_parser.utils import format_name
 
 _CASE_LIST_DIR = "case-list"
 _ATTENDING_COLUMN = "AnesAttendings"
@@ -70,22 +73,6 @@ def _normalize_resident_name(raw: str) -> list[str]:
     return candidates
 
 
-def _format_supervised_name(stem: str) -> str:
-    """Convert a supervised CSV stem into the resident display name."""
-    cleaned = stem.replace(".Supervised", "").strip()
-    if "," in cleaned:
-        last, first = (part.strip() for part in cleaned.split(",", 1))
-        return f"{first.title()} {last.title()}".strip()
-
-    parts = [part.strip() for part in cleaned.split("_", 1)]
-    if len(parts) == 2:
-        first, second = parts
-        if first.isupper() and second.isupper():
-            return f"{second.title()} {first.title()}"
-        return f"{first.title()} {second.title()}"
-    return cleaned.title()
-
-
 def _load_resident_keys(names_file: Path) -> set[str]:
     """Load normalized resident display names from the resident list."""
     names = [
@@ -115,9 +102,7 @@ def collect_attending_counts(
         return []
 
     for csv_path in sorted(directory.glob("*.csv")):
-        resident_name = _format_supervised_name(
-            csv_path.name.removesuffix(".CaseList.csv")
-        )
+        resident_name = format_name(csv_path.name.removesuffix(".CaseList.csv"))
         if resident_name.lower() not in resident_keys:
             continue
         with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -163,7 +148,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _write_csv(rows: list[tuple[str, int]], handle: object) -> None:
+def _write_csv(rows: list[tuple[str, int]], handle: TextIO) -> None:
     writer = csv.writer(handle)
     writer.writerow(["attending", "count"])
     writer.writerows(rows)

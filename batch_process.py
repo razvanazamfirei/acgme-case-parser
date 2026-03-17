@@ -45,6 +45,7 @@ from case_parser.models import (
 )
 from case_parser.processor import CaseProcessor
 from case_parser.standalone_exports import iter_standalone_case_exports
+from case_parser.utils import format_name, normalize_stem
 
 # Suppress noisy logging from the pipeline
 logging.getLogger("case_parser").setLevel(logging.WARNING)
@@ -73,11 +74,6 @@ def _get_worker_processor(columns: ColumnMap, use_ml: bool) -> CaseProcessor:
     return cached
 
 
-def _stem_normalize(name: str) -> str:
-    """Normalize a resident file stem into a stable, unique filesystem key."""
-    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
-
-
 def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path, Path]]:
     """Find matching case/procedure file pairs.
 
@@ -90,39 +86,15 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
         that have both a CaseList and a ProcedureList file.
     """
     case_files = {
-        _stem_normalize(f.name.removesuffix(".CaseList.csv")): f
+        normalize_stem(f.name.removesuffix(".CaseList.csv")): f
         for f in case_dir.glob("*.CaseList.csv")
     }
     proc_files = {
-        _stem_normalize(f.name.removesuffix(".ProcedureList.csv")): f
+        normalize_stem(f.name.removesuffix(".ProcedureList.csv")): f
         for f in proc_dir.glob("*.ProcedureList.csv")
     }
     common = sorted(set(case_files) & set(proc_files))
     return [(name, case_files[name], proc_files[name]) for name in common]
-
-
-def format_name(name: str) -> str:
-    """Convert resident file stems into a clean display name.
-
-    Args:
-        name: Filename stem from the CSV export pair.
-
-    Returns:
-        Best-effort title-cased resident name with any ``.Supervised`` marker
-        removed.
-    """
-    cleaned = name.replace(".Supervised", "").strip()
-    if "," in cleaned:
-        last, first = (part.strip() for part in cleaned.split(",", 1))
-        return f"{first.title()} {last.title()}".strip()
-
-    parts = [part.strip() for part in cleaned.split("_", 1)]
-    if len(parts) == 2:
-        first, second = parts
-        if first.isupper() and second.isupper():
-            return f"{second.title()} {first.title()}"
-        return f"{first.title()} {second.title()}"
-    return cleaned.title()
 
 
 def _resident_output_dir(base_output_dir: Path, resident_name: str) -> Path:

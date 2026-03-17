@@ -22,8 +22,6 @@ EXAMPLES OF MATCHED TEXT:
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 
 from ..domain import ExtractionFinding, VascularAccess
@@ -80,7 +78,7 @@ PA_CATHETER_PATTERNS = [
 
 
 def extract_vascular_access(
-    notes: Any, source_field: str = "procedure_notes"
+    notes: str | None, source_field: str = "procedure_notes"
 ) -> tuple[list[VascularAccess], list[ExtractionFinding]]:
     """
     Extract vascular access with pattern matching and confidence scoring.

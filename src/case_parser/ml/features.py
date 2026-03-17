@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import lru_cache
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 from scipy.sparse import csr_matrix, hstack
@@ -23,7 +24,10 @@ from ..patterns.procedure_patterns import (
     VASCULAR_FEATURE_KEYWORDS,
     VASCULAR_SERVICE_HINT_KEYWORDS,
 )
+from ..types import Scalar
 from .inputs import FeatureInput, normalize_feature_inputs
+
+_T = TypeVar("_T")
 
 
 class FeatureExtractor:
@@ -31,7 +35,7 @@ class FeatureExtractor:
 
     _FEATURE_DTYPE = np.float32
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize feature extractors."""
         # Word-level TF-IDF
         self.tfidf_word = TfidfVectorizer(
@@ -65,7 +69,10 @@ class FeatureExtractor:
             "pre",
         ]
 
-    def fit(self, procedures: list[Any]) -> FeatureExtractor:
+    def fit(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> FeatureExtractor:
         """Fit feature extractors on training data."""
         normalized_inputs = normalize_feature_inputs(procedures)
         texts = [self._compose_text(item) for item in normalized_inputs]
@@ -74,7 +81,7 @@ class FeatureExtractor:
         self._is_fitted = True
         return self
 
-    def transform(self, procedures: list[Any]) -> Any:
+    def transform(self, procedures: list[object]) -> csr_matrix:
         """Transform procedures to feature matrix."""
         if not self._is_fitted:
             raise ValueError("FeatureExtractor must be fitted before transform")
@@ -100,7 +107,10 @@ class FeatureExtractor:
             format="csr",
         )
 
-    def fit_transform(self, procedures: list[Any]) -> Any:
+    def fit_transform(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> csr_matrix:
         """Fit and transform in one step."""
         return self.fit(procedures).transform(procedures)
 
@@ -133,12 +143,12 @@ class FeatureExtractor:
 
     @staticmethod
     def _dedupe_preserve_order(
-        values: list[Any],
-    ) -> tuple[list[Any], np.ndarray[Any, Any]]:
+        values: list[_T],
+    ) -> tuple[list[_T], np.ndarray[Any, Any]]:
         """Return unique values and inverse indices while keeping first-seen order."""
-        unique_values: list[Any] = []
+        unique_values: list[_T] = []
         inverse_indices: list[int] = []
-        value_to_index: dict[Any, int] = {}
+        value_to_index: dict[_T, int] = {}
 
         for value in values:
             index = value_to_index.get(value)
@@ -155,7 +165,7 @@ class FeatureExtractor:
         cls,
         vectorizer: TfidfVectorizer,
         texts: list[str],
-    ) -> Any:
+    ) -> csr_matrix:
         """Transform text features once per distinct composed text."""
         unique_texts, inverse_indices = cls._dedupe_preserve_order(texts)
         unique_features = vectorizer.transform(unique_texts)

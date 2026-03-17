@@ -23,6 +23,7 @@ from .patterns import (
     extract_monitoring,
     extract_vascular_access,
 )
+from .types import Scalar
 
 __all__ = [
     "clean_names",
@@ -33,7 +34,7 @@ __all__ = [
 ]
 
 
-def _is_missing_scalar(value: object) -> bool:
+def _is_missing_scalar(value: Scalar) -> bool:
     """Return True for scalar missing-value sentinels handled by these helpers."""
     if value is None or value is pd.NA or value is pd.NaT:
         return True
@@ -73,7 +74,7 @@ def clean_names(name: object) -> str:
     return re.sub(r"\s+", " ", name)
 
 
-def extract_attending(value: object) -> str:
+def extract_attending(value: Scalar) -> str:
     """Clean an attending name by removing timestamps and extra entries.
 
     Input format: "DOE, JOHN@2023-01-01 08:00:00" or semicolon-separated list.

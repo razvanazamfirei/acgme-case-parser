@@ -308,7 +308,7 @@ def _resolve_category_result(
 
 def _normalize_categorization_request(
     procedure: str | None,
-    services: object,
+    services: str | Sequence[str | float | None] | None,
 ) -> tuple[str, tuple[str, ...]]:
     """Normalize one categorization request for cached lookup."""
     return _normalize_procedure_text(procedure), _normalize_services(services)
@@ -330,7 +330,7 @@ def _categorize_normalized_requests(
 
 def categorize_procedure(
     procedure: str | None,
-    services: object,
+    services: str | Sequence[str | float | None] | None,
 ) -> tuple[ProcedureCategory, list[str]]:
     """
     Categorize a procedure based on services and procedure text.
@@ -357,7 +357,7 @@ def categorize_procedure(
 
 def categorize_procedures(
     procedures: Sequence[str | None],
-    services_list: Sequence[object],
+    services_list: Sequence[str | Sequence[str | float | None] | None],
 ) -> list[tuple[ProcedureCategory, list[str]]]:
     """Categorize multiple procedures while reusing cached normalization."""
     if len(procedures) != len(services_list):
@@ -379,7 +379,7 @@ def _normalize_procedure_text(procedure: str | None) -> str:
     return str(procedure).upper()
 
 
-def _is_missing_service_scalar(service: object) -> bool:
+def _is_missing_service_scalar(service: str | float | int | None) -> bool:
     """Return True when a raw services input is a scalar null sentinel."""
     if service is None or service is pd.NA or service is pd.NaT:
         return True
@@ -388,7 +388,9 @@ def _is_missing_service_scalar(service: object) -> bool:
     return False
 
 
-def _normalize_services(services: object) -> tuple[str, ...]:
+def _normalize_services(
+    services: str | Sequence[str | float | None] | None,
+) -> tuple[str, ...]:
     """Normalize raw service values to uppercase immutable tuples for caching."""
     if _is_missing_service_scalar(services):
         return ()

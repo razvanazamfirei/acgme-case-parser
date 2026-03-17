@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import warnings
 from collections.abc import Mapping
-from typing import Any
 
 BASE_DEFAULT_ML_THRESHOLD = 0.45
 BASE_DEFAULT_ML_INFERENCE_JOBS = 1
@@ -68,7 +67,7 @@ def get_default_ml_inference_jobs(environ: Mapping[str, str] | None = None) -> i
 
 
 def normalize_ml_inference_jobs(
-    raw_value: Any,
+    raw_value: str | int | None,
     *,
     source_name: str = ML_INFERENCE_JOBS_ENV_VAR,
 ) -> int:
@@ -80,7 +79,7 @@ def normalize_ml_inference_jobs(
         raw_text = raw_value.strip()
         if not raw_text:
             return BASE_DEFAULT_ML_INFERENCE_JOBS
-        candidate_value: Any = raw_text
+        candidate_value: str | int = raw_text
     else:
         candidate_value = raw_value
 

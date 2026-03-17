@@ -184,7 +184,7 @@ def test_process_csv_returns_standalone_case_count(tmp_path: Path):
             options=options,
         )
 
-    assert result.cases == orphan_cases
+    assert result.cases == []
     assert result.output_df.empty
     assert result.standalone_case_count == 2
     assert write_standalone.call_count == 2

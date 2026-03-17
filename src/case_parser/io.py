@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import starmap
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 from openpyxl.utils import get_column_letter
@@ -25,6 +24,8 @@ from .models import (
     TECHNIQUE_RANK,
     ColumnMap,
 )
+from .types import Scalar
+from .utils import normalize_stem
 
 logger = logging.getLogger(__name__)
 _RESERVED_SHEET_NAMES = {"info", "_meta"}
@@ -32,7 +33,7 @@ _CASE_LEVEL_TECHNIQUE_MIN_RANK = 2
 DEFAULT_ORPHAN_AGE = 30
 
 
-def _combine_non_empty_text(*values: Any) -> str | None:
+def _combine_non_empty_text(*values: Scalar) -> str | None:
     """Join distinct non-empty text fields while preserving first-seen order."""
     parts: list[str] = []
     seen: set[str] = set()
@@ -50,30 +51,34 @@ def _combine_non_empty_text(*values: Any) -> str | None:
 def _column_or_default(
     df: DataFrame,
     column_name: str,
-    default: Any = None,
-) -> pd.Series | list[Any]:
+    default: str | None = None,
+) -> pd.Series | list[str | None]:
     """Return a DataFrame column or one default value per row when absent."""
     if column_name in df.columns:
         return df[column_name]
     return [default] * len(df)
 
 
-def _combine_text_columns(*columns: pd.Series | list[Any]) -> list[str | None]:
+def _combine_text_columns(*columns: pd.Series | list[str | None]) -> list[str | None]:
     """Combine row-aligned text columns with the shared distinct-text rules."""
     return list(starmap(_combine_non_empty_text, zip(*columns, strict=False)))
 
 
-def _assemble_airway_detail(rank: int, comment: Any, details: Any) -> str | None:
+def _assemble_airway_detail(
+    rank: int,
+    comment: str | None,
+    details: str | None,
+) -> str | None:
     """Build case-level airway detail text only for sufficiently invasive techniques."""
     if rank < _CASE_LEVEL_TECHNIQUE_MIN_RANK:
         return None
     return _combine_non_empty_text(comment, details)
 
 
-def _extract_attending_column(df: DataFrame, column_name: str) -> pd.Series | Any:
+def _extract_attending_column(df: DataFrame, column_name: str) -> pd.Series:
     """Return normalized attending names when a source column is present."""
     if column_name not in df.columns:
-        return pd.NA
+        return pd.Series([pd.NA] * len(df), index=df.index)
     return df[column_name].apply(extract_attending)
 
 
@@ -196,7 +201,7 @@ def read_excel(file_path: str | Path, sheet_name: str | int | None = 0) -> DataF
 class ExcelHandler:
     """Handles Excel file output operations."""
 
-    def __init__(self, max_width: int = 60):
+    def __init__(self, max_width: int = 60) -> None:
         """Initialize with maximum column width setting.
 
         Args:
@@ -355,11 +360,6 @@ class ExcelHandler:
 # ---------------------------------------------------------------------------
 
 
-def _stem_normalize(name: str) -> str:
-    """Normalize a resident file stem into a stable key for pairing."""
-    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
-
-
 def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     """Discover matching CaseList and ProcedureList CSV file pairs.
 
@@ -375,11 +375,11 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     directory = Path(directory)
 
     case_files = {
-        _stem_normalize(f.name.replace(".CaseList.csv", "")): f
+        normalize_stem(f.name.replace(".CaseList.csv", "")): f
         for f in directory.glob("*.CaseList.csv")
     }
     proc_files = {
-        _stem_normalize(f.name.replace(".ProcedureList.csv", "")): f
+        normalize_stem(f.name.replace(".ProcedureList.csv", "")): f
         for f in directory.glob("*.ProcedureList.csv")
     }
 
@@ -451,7 +451,7 @@ def join_case_and_procedures(
 class CsvHandler:
     """Handles MPOG supervised-export CSV v2 format reading."""
 
-    def __init__(self, column_map: ColumnMap | None = None):
+    def __init__(self, column_map: ColumnMap | None = None) -> None:
         """Initialize with column mapping.
 
         Args:

@@ -43,6 +43,7 @@ from .patterns.block_site_patterns import (
     PERIPHERAL_BLOCK_SITE_TERMS,
     normalize_block_site_terms,
 )
+from .types import Scalar
 
 logger = logging.getLogger(__name__)
 _CANONICAL_BLOCK_SITE_TERMS = {
@@ -104,11 +105,11 @@ class _ParsedRowMetadata:
     age_category: AgeCategory | None
     asa_str: str
     emergent: bool
-    raw_asa: Any
+    raw_asa: object
     anesthesia_type: AnesthesiaType | None
     services: list[str]
     procedure_category: ProcedureCategory
-    procedure_text: Any
+    procedure_text: object
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ class CaseProcessor:
         default_year: int = 2025,
         use_ml: bool = True,
         ml_threshold: float = DEFAULT_ML_THRESHOLD,
-    ):
+    ) -> None:
         """Initialize the processor with column mapping and default year.
 
         Args:
@@ -182,7 +183,7 @@ class CaseProcessor:
             return timestamp.replace(tzinfo=UTC)
         return timestamp.astimezone(UTC)
 
-    def parse_date(self, value: Any) -> tuple[datetime, list[str]]:
+    def parse_date(self, value: Scalar) -> tuple[datetime, list[str]]:
         """Parse date with fallback to default year.
 
         Args:
@@ -196,7 +197,7 @@ class CaseProcessor:
         return self._prepare_dates([value])[0]
 
     @staticmethod
-    def determine_age_category(age: Any) -> tuple[AgeCategory | None, list[str]]:
+    def determine_age_category(age: Scalar) -> tuple[AgeCategory | None, list[str]]:
         """Categorize age using structured age ranges.
 
         Args:
@@ -240,7 +241,7 @@ class CaseProcessor:
 
     @staticmethod
     def map_anesthesia_type(
-        anesthesia_input: Any,
+        anesthesia_input: Scalar,
     ) -> tuple[AnesthesiaType | None, list[str]]:
         """Map anesthesia description to standardized type.
 
@@ -317,7 +318,7 @@ class CaseProcessor:
         return classified_categories
 
     @staticmethod
-    def normalize_emergent_flag(value: Any) -> bool:
+    def normalize_emergent_flag(value: Scalar) -> bool:
         """Convert various emergent flag formats to boolean.
 
         Args:
@@ -335,9 +336,9 @@ class CaseProcessor:
     def _infer_anesthesia_type(  # noqa: PLR0911
         anesthesia_type: AnesthesiaType | None,
         airway_mgmt: list,
-        procedure_text: Any,
+        procedure_text: Scalar,
         procedure_category: ProcedureCategory,
-        notes: Any,
+        notes: Scalar,
     ) -> tuple[AnesthesiaType | None, list[str]]:
         """Infer anesthesia type from context clues when not directly mapped.
 
@@ -398,7 +399,7 @@ class CaseProcessor:
 
     @staticmethod
     def _calculate_confidence(
-        confidence_scores: list[float], notes: Any
+        confidence_scores: list[float], notes: Scalar
     ) -> tuple[float, list[str]]:
         """Calculate overall extraction confidence from per-finding scores.
 
@@ -430,21 +431,21 @@ class CaseProcessor:
         confidence_scores.extend(f.confidence for f in new_findings)
 
     @staticmethod
-    def _split_services(raw_services: Any) -> list[str]:
+    def _split_services(raw_services: object) -> list[str]:
         """Split a multiline services field into normalized items."""
         if pd.isna(raw_services):
             return []
         return [item.strip() for item in str(raw_services).split("\n") if item.strip()]
 
     @staticmethod
-    def _optional_str(value: Any) -> str | None:
+    def _optional_str(value: object) -> str | None:
         """Convert non-null values to string and preserve nulls as None."""
         if pd.isna(value):
             return None
         return str(value)
 
     @staticmethod
-    def _trimmed_optional_str(value: Any, max_length: int) -> str | None:
+    def _trimmed_optional_str(value: object, max_length: int) -> str | None:
         """Convert to string and trim to max_length, preserving nulls."""
         optional_value = CaseProcessor._optional_str(value)
         if optional_value is None:
@@ -452,7 +453,7 @@ class CaseProcessor:
         return optional_value[:max_length]
 
     @staticmethod
-    def _optional_float(value: Any) -> float | None:
+    def _optional_float(value: object) -> float | None:
         """Convert non-null values to float, preserving nulls."""
         if pd.isna(value):
             return None
@@ -462,7 +463,7 @@ class CaseProcessor:
             return None
 
     @staticmethod
-    def _clean_provider_name(value: Any) -> str | None:
+    def _clean_provider_name(value: object) -> str | None:
         """Normalize provider names when present."""
         if pd.isna(value):
             return None
@@ -470,7 +471,10 @@ class CaseProcessor:
 
     @staticmethod
     def _normalize_nerve_block_type(
-        value: Any, procedure_name: Any, procedure_notes: Any, case_procedure: Any
+        value: Scalar,
+        procedure_name: Scalar,
+        procedure_notes: Scalar,
+        case_procedure: Scalar,
     ) -> str | None:
         """Normalize optional nerve-block text to canonical site term(s)."""
         return normalize_block_site_terms(
@@ -482,9 +486,9 @@ class CaseProcessor:
 
     @staticmethod
     def _build_categorization_input(
-        procedure: Any,
-        anesthesia_input: Any,
-        procedure_notes: Any,
+        procedure: Scalar,
+        anesthesia_input: Scalar,
+        procedure_notes: Scalar,
         services: list[str],
     ) -> _CategorizationInput:
         """Build the normalized classifier payload from row-level source fields."""
@@ -615,7 +619,7 @@ class CaseProcessor:
 
     def _extract_case_data(
         self,
-        notes: Any,
+        notes: Scalar,
         metadata: _ParsedRowMetadata,
         all_warnings: list[str],
         all_findings: list[Any],

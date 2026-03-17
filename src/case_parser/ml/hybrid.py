@@ -71,7 +71,7 @@ class HybridClassifier:
         self,
         ml_predictor: MLPredictorLike | None,
         ml_threshold: float = DEFAULT_ML_THRESHOLD,
-    ):
+    ) -> None:
         """Initialize hybrid classifier.
 
         Args:

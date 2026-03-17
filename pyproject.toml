@@ -29,8 +29,6 @@ scripts.case-parser = "case_parser.cli:main"
 
 [dependency-groups]
 dev = [
-  "certifi>=2025.2.25",
-  "charset-normalizer>=3.4.1",
   "pandas-stubs~=3.0.0",
   "pytest>=9.0.2",
   "pytest-cov>=6.1.1",
@@ -41,7 +39,7 @@ dev = [
   "types-pytz>=2026.1.1.20260304",
 ]
 ml = [
-  "textual>=8.0.1",
+  "textual>=8.0.2",
 ]
 
 [tool.hatch]
@@ -51,6 +49,7 @@ build.targets.wheel.packages = [ "src/case_parser" ]
 default-groups = "all"
 
 [tool.pytest]
+minversion = "9.0"
 addopts = [
   "--cov=case_parser",
   "--cov-report=term-missing",

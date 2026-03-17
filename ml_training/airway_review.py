@@ -30,6 +30,7 @@ from case_parser.patterns.anesthesia_patterns import (
     MAC_WITHOUT_AIRWAY_PROCEDURE_KEYWORDS,
 )
 from case_parser.processor import CaseProcessor
+from case_parser.utils import normalize_stem
 
 console = Console()
 
@@ -199,11 +200,6 @@ def _build_case_key(source_file: str, case: ParsedCase) -> str:
             f"{hashlib.sha256(fallback_payload.encode('utf-8')).hexdigest()[:8]}"
         )
     return f"{source_file}:{case_id}:{procedure[:80]}"
-
-
-def _stem_normalize(name: str) -> str:
-    """Normalize a resident file stem into a stable key for pairing."""
-    return name.replace(".Supervised", "").replace(",", "_").strip().upper()
 
 
 def _combined_case_text(case: ParsedCase) -> str:
@@ -602,11 +598,11 @@ def _discover_pair_paths(base_dir: Path) -> list[tuple[Path, Path]]:
         )
 
     case_files = {
-        _stem_normalize(path.name.removesuffix(".CaseList.csv")): path
+        normalize_stem(path.name.removesuffix(".CaseList.csv")): path
         for path in case_dir.glob("*.CaseList.csv")
     }
     proc_files = {
-        _stem_normalize(path.name.removesuffix(".ProcedureList.csv")): path
+        normalize_stem(path.name.removesuffix(".ProcedureList.csv")): path
         for path in proc_dir.glob("*.ProcedureList.csv")
     }
     common = sorted(set(case_files) & set(proc_files))

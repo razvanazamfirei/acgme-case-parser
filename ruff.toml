@@ -8,7 +8,7 @@ target-version = "py312"
   ignore = ["PLR2004"]
   preview = true
   select = [
-    # "ANN",
+    "ANN",
     # "ARG",
     "B",
     "C4",
@@ -38,6 +38,7 @@ target-version = "py312"
   ]
 
   [lint.per-file-ignores]
+    "ml_training/**" = ["ANN"]
     "tests/**" = [
       "S101",
       "PLR6301",

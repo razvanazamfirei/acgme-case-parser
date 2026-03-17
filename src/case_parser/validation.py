@@ -18,7 +18,7 @@ from .domain import ParsedCase
 class ValidationReport:
     """Generate validation reports for parsed cases."""
 
-    def __init__(self, cases: list[ParsedCase]):
+    def __init__(self, cases: list[ParsedCase]) -> None:
         """Initialize with list of parsed cases.
 
         Args:
@@ -108,7 +108,7 @@ class ValidationReport:
         ]
 
     @staticmethod
-    def _print_summary_section(console: Console, summary: dict[str, Any]):
+    def _print_summary_section(console: Console, summary: dict[str, Any]) -> None:
         """Print summary section of validation report.
 
         Args:
@@ -140,7 +140,7 @@ class ValidationReport:
     @staticmethod
     def _print_missing_fields_section(
         console: Console, summary: dict[str, Any], total: int
-    ):
+    ) -> None:
         """Print missing fields section of validation report.
 
         Args:
@@ -164,7 +164,7 @@ class ValidationReport:
         console.print()
 
     @staticmethod
-    def _print_warning_types_section(console: Console, summary: dict[str, Any]):
+    def _print_warning_types_section(console: Console, summary: dict[str, Any]) -> None:
         """Print warning types section of validation report.
 
         Args:
@@ -188,7 +188,7 @@ class ValidationReport:
         console.print(table)
         console.print()
 
-    def _print_problematic_cases_section(self, console: Console):
+    def _print_problematic_cases_section(self, console: Console) -> None:
         """Print problematic cases section of validation report.
 
         Args:

@@ -395,7 +395,8 @@ def process_input(
                 cases=export_cases,
                 spec=spec,
             )
-        all_cases.extend(orphan_cases)
+        # Do not extend all_cases with orphan_cases; keep main cases separate so
+        # main() can correctly gate on has_main_cases for standalone-only runs.
 
     return _ProcessingResult(
         cases=all_cases,
@@ -583,11 +584,11 @@ def main() -> None:
             columns=columns,
             options=options,
         )
-        all_cases = processing_result.cases
+        main_cases = processing_result.cases
         output_df = processing_result.output_df
         standalone_case_count = processing_result.standalone_case_count
 
-        if not all_cases:
+        if not main_cases:
             if standalone_case_count:
                 console.print(
                     "[yellow]Warning:[/yellow] "
@@ -599,7 +600,7 @@ def main() -> None:
             return
 
         if args.validation_report:
-            save_validation_report(all_cases, Path(args.validation_report))
+            save_validation_report(main_cases, Path(args.validation_report))
 
         excel_handler.write_excel(
             output_df,
