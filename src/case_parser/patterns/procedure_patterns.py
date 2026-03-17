@@ -15,7 +15,7 @@ To modify categorization:
 3. Use exclude_keywords to prevent false matches
 
 SPECIAL CASES:
-- OB/GYN procedures are handled separately in processors.py with cesarean detection
+- OB/GYN procedures are handled separately in categorization.py
 - More specific rules should come before general ones
 """
 
@@ -33,7 +33,15 @@ class ProcedureRule:
     exclude_keywords: tuple[str, ...] = ()
 
 
-OBGYN_SERVICE_KEYWORDS = ("OBGYN", "OB/GYN", "OBSTET", "GYN")
+OBGYN_SERVICE_KEYWORDS = (
+    "OBGYN",
+    "OB/GYN",
+    "OBSTET",
+    "GYN",
+    "L&D",
+    "LABOR AND DELIVERY",
+    "LABOR & DELIVERY",
+)
 CARDIAC_SERVICE_HINT_KEYWORDS = ("CARD", "CARDSURG", "CARDIAC")
 NEURO_SERVICE_HINT_KEYWORDS = ("NEURO",)
 VASCULAR_SERVICE_HINT_KEYWORDS = ("VASC",)
@@ -244,7 +252,7 @@ PROCEDURE_RULES = [
         keywords=("TRANSPLANT",),
         category="Other (procedure cat)",
     ),
-    # OB/GYN - Special handling in processors.py
+    # OB/GYN - Special handling in categorization.py
     # Cesarean deliveries are detected by searching procedure text for:
     # "CESAREAN", "C-SECTION", or "C SECTION"
     # and categorized separately as "Cesarean del"

@@ -34,6 +34,7 @@ NEURAXIAL_BLOCK_SITE_TERMS: tuple[str, ...] = (
 )
 
 _OTHER_PERIPHERAL_SITE: Final[str] = "Other - peripheral nerve blockade site"
+_DEFAULT_BRACHIAL_PLEXUS_SITE: Final[str] = "Supraclavicular"
 
 _PERIPHERAL_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
@@ -111,6 +112,17 @@ _PERIPHERAL_CONTEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bnerve\s+block(?:ade)?\b", flags=re.IGNORECASE),
     re.compile(r"\bbrachial\s+plexus\b", flags=re.IGNORECASE),
 )
+_BRACHIAL_PLEXUS_CONTEXT = re.compile(r"\bbrachial\s+plexus\b", flags=re.IGNORECASE)
+_BRACHIAL_PLEXUS_SHOULDER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bshoulder\b", flags=re.IGNORECASE),
+    re.compile(r"\brotator\s+cuff\b", flags=re.IGNORECASE),
+    re.compile(r"\blabrum\b", flags=re.IGNORECASE),
+    re.compile(r"\bbankart\b", flags=re.IGNORECASE),
+    re.compile(r"\bslap\b", flags=re.IGNORECASE),
+    re.compile(r"\bclavicle\b", flags=re.IGNORECASE),
+    re.compile(r"\bacromio", flags=re.IGNORECASE),
+    re.compile(r"\bprox(?:imal)?\s+humer", flags=re.IGNORECASE),
+)
 
 _THORACIC_EXPLICIT_HIGH = re.compile(r"\bt\s*1\s*-\s*7\b", flags=re.IGNORECASE)
 _THORACIC_EXPLICIT_LOW = re.compile(r"\bt\s*8\s*-\s*12\b", flags=re.IGNORECASE)
@@ -135,6 +147,7 @@ def normalize_block_site_terms(
     *,
     procedure_name: str | None = None,
     procedure_notes: str | None = None,
+    case_procedure: str | None = None,
 ) -> str | None:
     """Normalize free-text block site strings to canonical term values.
 
@@ -145,8 +158,9 @@ def normalize_block_site_terms(
     primary_text = _clean_optional_text(primary_block)
     procedure_text = _clean_optional_text(procedure_name)
     notes_text = _clean_optional_text(procedure_notes)
+    case_procedure_text = _clean_optional_text(case_procedure)
 
-    if not (primary_text or procedure_text or notes_text):
+    if not (primary_text or procedure_text or notes_text or case_procedure_text):
         return None
 
     # Only use free-text notes as a supplement when a primary block value exists.
@@ -178,7 +192,11 @@ def normalize_block_site_terms(
     if not peripheral_matches and _has_pattern_match(
         search_text, _PERIPHERAL_CONTEXT_PATTERNS
     ):
-        peripheral_matches.add(_OTHER_PERIPHERAL_SITE)
+        inferred_brachial_site = _infer_brachial_plexus_site(
+            search_text,
+            case_procedure_text,
+        )
+        peripheral_matches.add(inferred_brachial_site or _OTHER_PERIPHERAL_SITE)
 
     if not peripheral_matches and not neuraxial_matches:
         return primary_text or None
@@ -190,6 +208,19 @@ def normalize_block_site_terms(
         term for term in NEURAXIAL_BLOCK_SITE_TERMS if term in neuraxial_matches
     )
     return "; ".join(ordered_terms)
+
+
+def _infer_brachial_plexus_site(
+    search_text: str, case_procedure_text: str
+) -> str | None:
+    """Infer a canonical site for generic brachial plexus block text."""
+    if not _BRACHIAL_PLEXUS_CONTEXT.search(search_text):
+        return None
+
+    if _has_pattern_match(case_procedure_text, _BRACHIAL_PLEXUS_SHOULDER_PATTERNS):
+        return "Interscalene"
+
+    return _DEFAULT_BRACHIAL_PLEXUS_SITE
 
 
 def _clean_optional_text(value: str | None) -> str:

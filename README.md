@@ -92,7 +92,7 @@ python batch_process.py
 python batch_process.py --base-dir /path/to/supervised --output-dir /path/to/output
 
 # Sort output files to match a names list
-python sort-logs.py --names-file residents.txt --input-dir Output-Individual
+python sort-logs.py --names-file residents.txt --input-dir Output
 ```
 
 ### Debug Categorization

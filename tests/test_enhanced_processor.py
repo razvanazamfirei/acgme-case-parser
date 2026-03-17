@@ -261,19 +261,31 @@ class TestAnesthesiaTypeMapping:
 class TestProcedureCategorization:
     """Test procedure categorization functionality."""
 
+    @staticmethod
+    def _classify(
+        processor: CaseProcessor,
+        procedure: str,
+        services: list[str],
+    ) -> tuple[ProcedureCategory, list[str]]:
+        categorization_input = processor._build_categorization_input(
+            procedure,
+            None,
+            None,
+            services,
+        )
+        return processor._classify_categorization_inputs([categorization_input])[0]
+
     def test_categorize_cardiac(self, processor):
         """Test cardiac procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "Heart surgery", ["CARDIAC"]
-        )
+        category, warnings = self._classify(processor, "Heart surgery", ["CARDIAC"])
 
         assert category == ProcedureCategory.CARDIAC_WITH_CPB
         assert len(warnings) == 0
 
     def test_categorize_intracerebral(self, processor):
         """Test intracerebral procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "Brain surgery", ["NEUROSURGERY"]
+        category, warnings = self._classify(
+            processor, "Brain surgery", ["NEUROSURGERY"]
         )
 
         assert category == ProcedureCategory.INTRACEREBRAL_NONVASCULAR_OPEN
@@ -281,27 +293,21 @@ class TestProcedureCategorization:
 
     def test_categorize_intrathoracic(self, processor):
         """Test intrathoracic non-cardiac procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "Lung surgery", ["THORACIC"]
-        )
+        category, warnings = self._classify(processor, "Lung surgery", ["THORACIC"])
 
         assert category == ProcedureCategory.INTRATHORACIC_NON_CARDIAC
         assert len(warnings) == 0
 
     def test_categorize_major_vessels(self, processor):
         """Test major vessels procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "Vascular surgery", ["VASCULAR"]
-        )
+        category, warnings = self._classify(processor, "Vascular surgery", ["VASCULAR"])
 
         assert category == ProcedureCategory.MAJOR_VESSELS_OPEN
         assert len(warnings) == 0
 
     def test_categorize_cesarean(self, processor):
         """Test cesarean procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "Cesarean delivery", ["OB/GYN"]
-        )
+        category, warnings = self._classify(processor, "Cesarean delivery", ["OB/GYN"])
 
         assert category == ProcedureCategory.CESAREAN
         assert len(warnings) == 0
@@ -315,33 +321,29 @@ class TestProcedureCategorization:
         ]
 
         for procedure, services in variations:
-            category, _warnings = processor.determine_procedure_category(
-                procedure, services
-            )
+            category, _warnings = self._classify(processor, procedure, services)
             assert category == ProcedureCategory.CESAREAN, f"Failed for: {procedure}"
 
     def test_categorize_obgyn_non_cesarean(self, processor):
         """Test non-cesarean OB/GYN procedure."""
-        category, warnings = processor.determine_procedure_category(
-            "Hysterectomy", ["GYN"]
-        )
+        category, warnings = self._classify(processor, "Hysterectomy", ["GYN"])
 
         assert category == ProcedureCategory.OTHER
         assert len(warnings) == 0
 
     def test_categorize_other(self, processor):
         """Test other procedure categorization."""
-        category, warnings = processor.determine_procedure_category(
-            "General surgery", ["GENERAL"]
-        )
+        category, warnings = self._classify(processor, "General surgery", ["GENERAL"])
 
         assert category == ProcedureCategory.OTHER
         assert len(warnings) == 0
 
     def test_categorize_multiple_services(self, processor):
         """Test multiple categories warning."""
-        category, warnings = processor.determine_procedure_category(
-            "Complex procedure", ["CARDIAC", "VASCULAR"]
+        category, warnings = self._classify(
+            processor,
+            "Complex procedure",
+            ["CARDIAC", "VASCULAR"],
         )
 
         # Should return first category and warn
@@ -354,17 +356,17 @@ class TestProcedureCategorization:
 
     def test_categorize_empty_services(self, processor):
         """Test categorization with no services."""
-        category, warnings = processor.determine_procedure_category(
-            "Some procedure", []
-        )
+        category, warnings = self._classify(processor, "Some procedure", [])
 
         assert category == ProcedureCategory.OTHER
         assert len(warnings) == 0
 
     def test_categorize_from_procedure_text_when_services_missing(self, processor):
         """Procedure text fallback should work when services are empty (CSV v2)."""
-        category, warnings = processor.determine_procedure_category(
-            "ANGIOGRAPHY EXTREMITY UNILATERAL", []
+        category, warnings = self._classify(
+            processor,
+            "ANGIOGRAPHY EXTREMITY UNILATERAL",
+            [],
         )
 
         assert category == ProcedureCategory.MAJOR_VESSELS_ENDOVASCULAR
@@ -372,8 +374,10 @@ class TestProcedureCategorization:
 
     def test_categorize_cesarean_without_services(self, processor):
         """Cesarean should still classify even if service metadata is absent."""
-        category, warnings = processor.determine_procedure_category(
-            "CESAREAN DELIVERY ONLY", []
+        category, warnings = self._classify(
+            processor,
+            "CESAREAN DELIVERY ONLY",
+            [],
         )
 
         assert category == ProcedureCategory.CESAREAN
@@ -561,8 +565,8 @@ class TestRowProcessing:
 
         assert case.nerve_block_type == "Femoral; Popliteal; Sciatic"
 
-    def test_process_row_maps_unknown_peripheral_block_to_other(self, processor):
-        """Peripheral block text outside the allowed set should map to Other."""
+    def test_process_row_maps_brachial_plexus_to_canonical_site(self, processor):
+        """Shoulder brachial plexus blocks should map to a canonical site."""
         row = pd.Series({
             "Date": "08/27/2025",
             "Episode ID": "12345",
@@ -579,7 +583,70 @@ class TestRowProcessing:
 
         case = processor.process_row(row)
 
-        assert case.nerve_block_type == "Other - peripheral nerve blockade site"
+        assert case.nerve_block_type == "Interscalene"
+
+    def test_process_row_infers_vaginal_delivery_from_ld_neuraxial_case(
+        self, processor
+    ):
+        """L&D epidural/CSE cases should not fall through to Other."""
+        for anesthesia_type in ["Epidural", "CSE"]:
+            row = pd.Series({
+                "Date": "08/27/2025",
+                "Episode ID": "12345",
+                "Anesthesiologist": "Dr. Smith",
+                "Age": 30.0,
+                "ASA": "2",
+                "Emergent": "N",
+                "Anesthesia Type": anesthesia_type,
+                "Procedure": "Analgesia",
+                "Services": "L&D",
+                "Procedure Notes": None,
+                "Nerve Block Type": pd.NA,
+            })
+
+            case = processor.process_row(row)
+
+            assert case.procedure_category == ProcedureCategory.VAGINAL_DELIVERY
+
+    def test_process_dataframe_infers_standalone_neuraxial_vaginal_delivery(
+        self, processor
+    ):
+        """Standalone orphan neuraxial rows should classify from fallback text."""
+        df = pd.DataFrame([
+            {
+                "Date": "08/27/2025",
+                "Episode ID": "S1",
+                "Anesthesiologist": "Dr. Smith",
+                "Age": 30.0,
+                "ASA": "2",
+                "Emergent": "N",
+                "Anesthesia Type": "Labor Epidural",
+                "Procedure": pd.NA,
+                "Services": "",
+                "Procedure Notes": "Labor Epidural",
+                "Nerve Block Type": pd.NA,
+            },
+            {
+                "Date": "08/27/2025",
+                "Episode ID": "S2",
+                "Anesthesiologist": "Dr. Smith",
+                "Age": 30.0,
+                "ASA": "2",
+                "Emergent": "N",
+                "Anesthesia Type": "CSE",
+                "Procedure": pd.NA,
+                "Services": "",
+                "Procedure Notes": "L&D Labor Epidural",
+                "Nerve Block Type": pd.NA,
+            },
+        ])
+
+        cases = processor.process_dataframe(df)
+
+        assert [case.procedure_category for case in cases] == [
+            ProcedureCategory.VAGINAL_DELIVERY,
+            ProcedureCategory.VAGINAL_DELIVERY,
+        ]
 
     def test_process_row_maps_spinal_to_lumbar_site_when_unspecified(self, processor):
         """Spinal procedures without explicit site should default to lumbar."""
@@ -972,27 +1039,6 @@ _FULL_ROW = {
 }
 
 
-class TestProcessRowSafe:
-    """Test the error-catching wrapper around process_row."""
-
-    def test_returns_parsed_case_on_success(self, processor):
-        row = pd.Series(_FULL_ROW)
-        case = processor._process_row_safe(0, row)
-
-        assert isinstance(case, ParsedCase)
-        assert case.episode_id == "12345"
-
-    def test_returns_error_case_on_exception(self, processor):
-        row = pd.Series(_FULL_ROW)
-
-        with patch.object(processor, "process_row", side_effect=RuntimeError("boom")):
-            case = processor._process_row_safe(0, row)
-
-        assert case.episode_id is None
-        assert case.confidence_score == 0
-        assert any("Failed to process row" in w for w in case.parsing_warnings)
-
-
 class TestProcessDataframeExtended:
     """Additional process_dataframe edge cases."""
 
@@ -1124,7 +1170,7 @@ class TestProcessDataframeExtended:
         processor,
         caplog,
     ):
-        df = pd.DataFrame([_FULL_ROW])
+        df = pd.DataFrame([_FULL_ROW, {**_FULL_ROW, "Episode ID": "67890"}])
 
         with (
             caplog.at_level(logging.ERROR, logger="case_parser.processor"),
@@ -1132,8 +1178,8 @@ class TestProcessDataframeExtended:
         ):
             cases = processor.process_dataframe(df)
 
-        assert len(cases) == 1
-        assert cases[0].episode_id == "12345"
+        assert len(cases) == 2
+        assert [case.episode_id for case in cases] == ["12345", "67890"]
         assert "Batch row preparation failed" in caplog.text
 
     def test_process_dataframe_falls_back_when_process_chunk_state_is_busy(

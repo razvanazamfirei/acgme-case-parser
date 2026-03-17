@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from functools import lru_cache
+from itertools import starmap
 from numbers import Real
 
 import pandas as pd
@@ -26,6 +27,9 @@ from .procedure_patterns import (
 )
 
 _SERVICE_SENTINELS = {"", "<NA>", "NAN", "NONE"}
+_CESAREAN_KEYWORDS = ("CESAREAN", "C-SECTION", "C SECTION")
+_OB_DELIVERY_KEYWORDS = ("VAGINAL", "DELIVERY", "LABOR")
+_OB_GENERIC_NEURAXIAL_KEYWORDS = ("EPIDURAL", "CSE")
 
 
 def categorize_cardiac(procedure_text: str) -> ProcedureCategory:
@@ -148,6 +152,26 @@ def categorize_intracerebral(procedure_text: str) -> ProcedureCategory:
     return ProcedureCategory.INTRACEREBRAL_NONVASCULAR_OPEN
 
 
+def _categorize_obgyn_text(
+    procedure_text: str,
+    *,
+    allow_generic_neuraxial: bool = False,
+) -> ProcedureCategory:
+    """Return the OB/GYN category for normalized procedure text."""
+    if any(keyword in procedure_text for keyword in _CESAREAN_KEYWORDS):
+        return ProcedureCategory.CESAREAN
+
+    if any(keyword in procedure_text for keyword in _OB_DELIVERY_KEYWORDS):
+        return ProcedureCategory.VAGINAL_DELIVERY
+
+    if allow_generic_neuraxial and any(
+        keyword in procedure_text for keyword in _OB_GENERIC_NEURAXIAL_KEYWORDS
+    ):
+        return ProcedureCategory.VAGINAL_DELIVERY
+
+    return ProcedureCategory.OTHER
+
+
 def categorize_obgyn(procedure_text: str) -> ProcedureCategory:
     """
     Categorize OB/GYN procedures based on delivery type.
@@ -163,18 +187,7 @@ def categorize_obgyn(procedure_text: str) -> ProcedureCategory:
     Returns:
         ProcedureCategory for OB/GYN subtype
     """
-    # Check for cesarean
-    cesarean_keywords = ("CESAREAN", "C-SECTION", "C SECTION")
-    if any(kw in procedure_text for kw in cesarean_keywords):
-        return ProcedureCategory.CESAREAN
-
-    # Check for vaginal delivery / labor
-    vaginal_keywords = ("LABOR EPIDURAL", "VAGINAL", "DELIVERY", "LABOR")
-    if any(kw in procedure_text for kw in vaginal_keywords):
-        return ProcedureCategory.VAGINAL_DELIVERY
-
-    # Other GYN procedures
-    return ProcedureCategory.OTHER
+    return _categorize_obgyn_text(procedure_text)
 
 
 def _match_rules(
@@ -196,10 +209,18 @@ def _match_rules(
             ):
                 continue
             category = _apply_rule_category(rule.category, procedure_text)
-            if category not in categories:
-                categories.append(category)
+            _append_unique_category(categories, category)
             break
     return categories
+
+
+def _append_unique_category(
+    categories: list[ProcedureCategory],
+    category: ProcedureCategory,
+) -> None:
+    """Append one category while preserving encounter order and uniqueness."""
+    if category not in categories:
+        categories.append(category)
 
 
 def _match_services_to_categories(
@@ -213,11 +234,17 @@ def _match_services_to_categories(
         exclude_in_values=True,
     )
 
-    for service in services:
-        if any(keyword in service for keyword in OBGYN_SERVICE_KEYWORDS):
-            obgyn_category = categorize_obgyn(procedure_text)
-            if obgyn_category not in categories:
-                categories.append(obgyn_category)
+    has_obstetric_service = any(
+        any(keyword in service for keyword in OBGYN_SERVICE_KEYWORDS)
+        for service in services
+    )
+    if has_obstetric_service:
+        obgyn_category = _categorize_obgyn_text(
+            procedure_text,
+            allow_generic_neuraxial=True,
+        )
+        if obgyn_category != ProcedureCategory.OTHER:
+            _append_unique_category(categories, obgyn_category)
 
     return categories
 
@@ -246,10 +273,59 @@ def _fallback_categories_from_text(procedure_text: str) -> list[ProcedureCategor
         return [categories[0]]
 
     obgyn_category = categorize_obgyn(procedure_text)
-    if obgyn_category != ProcedureCategory.OTHER:
-        return [obgyn_category]
+    return [] if obgyn_category == ProcedureCategory.OTHER else [obgyn_category]
 
-    return []
+
+def _collect_candidate_categories(
+    procedure_text: str,
+    services: tuple[str, ...],
+) -> list[ProcedureCategory]:
+    """Collect ordered category candidates from services, then text fallback."""
+    categories = _match_services_to_categories(list(services), procedure_text)
+    if categories or not procedure_text:
+        return categories
+    return _fallback_categories_from_text(procedure_text)
+
+
+def _resolve_category_result(
+    categories: list[ProcedureCategory],
+    services: tuple[str, ...],
+) -> tuple[ProcedureCategory, tuple[str, ...]]:
+    """Resolve candidate categories to the final category and warnings."""
+    if not categories:
+        return ProcedureCategory(DEFAULT_PROCEDURE_CATEGORY), ()
+
+    if len(categories) == 1:
+        return categories[0], ()
+
+    warning = (
+        f"Multiple procedure categories detected for services {list(services)}: "
+        f"{[category.value for category in categories]}. "
+        f"Using first: {categories[0].value}"
+    )
+    return categories[0], (warning,)
+
+
+def _normalize_categorization_request(
+    procedure: str | None,
+    services: object,
+) -> tuple[str, tuple[str, ...]]:
+    """Normalize one categorization request for cached lookup."""
+    return _normalize_procedure_text(procedure), _normalize_services(services)
+
+
+def _categorize_normalized_requests(
+    normalized_requests: Sequence[tuple[str, tuple[str, ...]]],
+) -> list[tuple[ProcedureCategory, list[str]]]:
+    """Categorize normalized requests through the shared cached path."""
+    results: list[tuple[ProcedureCategory, list[str]]] = []
+    for procedure_text, normalized_services in normalized_requests:
+        category, warnings = _categorize_procedure_cached(
+            procedure_text,
+            normalized_services,
+        )
+        results.append((category, list(warnings)))
+    return results
 
 
 def categorize_procedure(
@@ -262,7 +338,7 @@ def categorize_procedure(
     This is the main entry point for procedure categorization. It:
     1. Checks services against PROCEDURE_RULES
     2. Applies surgery-specific categorization logic
-    3. Handles special cases (OB/GYN, labor epidural)
+    3. Handles special cases such as OB/GYN delivery categorization
     4. Returns the category and any warnings
 
     Args:
@@ -274,13 +350,9 @@ def categorize_procedure(
     Returns:
         Tuple of (ProcedureCategory, warnings_list)
     """
-    procedure_text = _normalize_procedure_text(procedure)
-    normalized_services = _normalize_services(services)
-    category, warnings = _categorize_procedure_cached(
-        procedure_text,
-        normalized_services,
-    )
-    return category, list(warnings)
+    return _categorize_normalized_requests(
+        [_normalize_categorization_request(procedure, services)]
+    )[0]
 
 
 def categorize_procedures(
@@ -291,14 +363,13 @@ def categorize_procedures(
     if len(procedures) != len(services_list):
         raise ValueError("services_list must match procedures length")
 
-    results: list[tuple[ProcedureCategory, list[str]]] = []
-    for procedure, services in zip(procedures, services_list, strict=True):
-        category, warnings = _categorize_procedure_cached(
-            _normalize_procedure_text(procedure),
-            _normalize_services(services),
+    normalized_requests = list(
+        starmap(
+            _normalize_categorization_request,
+            zip(procedures, services_list, strict=True),
         )
-        results.append((category, list(warnings)))
-    return results
+    )
+    return _categorize_normalized_requests(normalized_requests)
 
 
 def _normalize_procedure_text(procedure: str | None) -> str:
@@ -347,28 +418,8 @@ def _categorize_procedure_cached(
     services: tuple[str, ...],
 ) -> tuple[ProcedureCategory, tuple[str, ...]]:
     """Cached implementation of categorize_procedure()."""
-    warnings: list[str] = []
-    categories = _match_services_to_categories(list(services), procedure_text)
-
-    if not categories and procedure_text:
-        categories = _fallback_categories_from_text(procedure_text)
-
-    if (
-        not categories or categories == [ProcedureCategory.OTHER]
-    ) and "LABOR EPIDURAL" in procedure_text:
-        categories = [ProcedureCategory.VAGINAL_DELIVERY]
-
-    if len(categories) > 1:
-        warnings.append(
-            f"Multiple procedure categories detected for services {list(services)}: "
-            f"{[c.value for c in categories]}. Using first: {categories[0].value}"
-        )
-        return categories[0], tuple(warnings)
-
-    if len(categories) == 1:
-        return categories[0], tuple(warnings)
-
-    return ProcedureCategory(DEFAULT_PROCEDURE_CATEGORY), tuple(warnings)
+    categories = _collect_candidate_categories(procedure_text, services)
+    return _resolve_category_result(categories, services)
 
 
 def _apply_rule_category(rule_category: str, procedure_text: str) -> ProcedureCategory:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import starmap
+
 import numpy as np
 import pandas as pd
 
@@ -20,6 +22,7 @@ from case_parser.patterns.categorization import (
     categorize_intracerebral,
     categorize_obgyn,
     categorize_procedure,
+    categorize_procedures,
     categorize_vascular,
 )
 
@@ -182,6 +185,10 @@ class TestCategorizeObgyn:
         # "LABOR EPIDURAL" is in vaginal_keywords → VAGINAL_DELIVERY
         assert categorize_obgyn("LABOR EPIDURAL") == ProcedureCategory.VAGINAL_DELIVERY
 
+    def test_generic_neuraxial_without_ob_context_returns_other(self):
+        assert categorize_obgyn("EPIDURAL") == ProcedureCategory.OTHER
+        assert categorize_obgyn("CSE") == ProcedureCategory.OTHER
+
     def test_null_input_returns_other(self):
         assert categorize_obgyn("") == ProcedureCategory.OTHER
 
@@ -246,6 +253,21 @@ class TestCategorizeProcedure:
         assert category == ProcedureCategory.INTRATHORACIC_NON_CARDIAC
         assert warnings == []
 
+    def test_obstetric_service_promotes_generic_neuraxial_epidural(self):
+        category, warnings = categorize_procedure("Epidural", ["L&D"])
+        assert category == ProcedureCategory.VAGINAL_DELIVERY
+        assert warnings == []
+
+    def test_obstetric_service_promotes_generic_neuraxial_cse(self):
+        category, warnings = categorize_procedure("CSE", ["Labor and Delivery"])
+        assert category == ProcedureCategory.VAGINAL_DELIVERY
+        assert warnings == []
+
+    def test_ob_service_other_does_not_create_extra_warning(self):
+        category, warnings = categorize_procedure("Heart surgery", ["CARDIAC", "GYN"])
+        assert category == ProcedureCategory.CARDIAC_WITH_CPB
+        assert warnings == []
+
     def test_no_match_falls_back_to_other(self):
         category, _warnings = categorize_procedure(
             "Something random", ["UNKNOWN_SERVICE"]
@@ -263,6 +285,19 @@ class TestCategorizeProcedure:
         category, warnings = categorize_procedure("Heart surgery", "CARDIAC")
         assert category == ProcedureCategory.CARDIAC_WITH_CPB
         assert warnings == []
+
+    def test_batch_entrypoint_matches_single_entrypoint(self):
+        procedures = [None, "Heart surgery", "Epidural"]
+        services_list = [[], ["CARDIAC"], ["L&D"]]
+
+        expected = list(
+            starmap(
+                categorize_procedure,
+                zip(procedures, services_list, strict=True),
+            )
+        )
+
+        assert categorize_procedures(procedures, services_list) == expected
 
     def test_apply_rule_category_cardiac(self):
         result = _apply_rule_category("Cardiac", "OFF PUMP CABG")

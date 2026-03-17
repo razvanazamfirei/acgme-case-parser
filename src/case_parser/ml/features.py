@@ -50,8 +50,6 @@ class FeatureExtractor:
             min_df=2,
             dtype=self._FEATURE_DTYPE,
         )
-
-        self.feature_version = 2
         self._is_fitted = False
 
     @staticmethod
@@ -112,17 +110,6 @@ class FeatureExtractor:
     ) -> np.ndarray[Any, Any]:
         """Extract structured features for a batch of procedures."""
         unique_procedures, inverse_indices = self._dedupe_preserve_order(procedures)
-        version = getattr(self, "feature_version", 1)
-        if version <= 1:
-            unique_features = np.array(
-                [
-                    self._extract_structured_single_v1_cached(item.procedure_text)
-                    for item in unique_procedures
-                ],
-                dtype=self._FEATURE_DTYPE,
-            )
-            return unique_features[inverse_indices]
-
         unique_features = np.array(
             [
                 self._extract_structured_single_v2_cached(
@@ -173,39 +160,6 @@ class FeatureExtractor:
         unique_texts, inverse_indices = cls._dedupe_preserve_order(texts)
         unique_features = vectorizer.transform(unique_texts)
         return unique_features[inverse_indices]
-
-    @staticmethod
-    @lru_cache(maxsize=32768)
-    def _extract_structured_single_v1_cached(procedure_text: str) -> tuple[float, ...]:
-        """Original structured feature set kept for backward compatibility."""
-        proc_upper = procedure_text.upper()
-        category, warnings = categorize_procedure(procedure_text, services=[])
-
-        return (
-            float("CPB" in proc_upper),
-            float("CARDIOPULMONARY BYPASS" in proc_upper),
-            float("BYPASS" in proc_upper and "CARDIAC" in proc_upper),
-            float("ENDOVASCULAR" in proc_upper),
-            float("OPEN" in proc_upper),
-            float("LAPAROSCOPIC" in proc_upper),
-            float("ROBOTIC" in proc_upper),
-            float("CARDIAC" in proc_upper or "HEART" in proc_upper),
-            float("CRANIOTOMY" in proc_upper or "INTRACRANIAL" in proc_upper),
-            float("THORACIC" in proc_upper or "CHEST" in proc_upper),
-            float("VASCULAR" in proc_upper or "VESSEL" in proc_upper),
-            float("CESAREAN" in proc_upper or "C-SECTION" in proc_upper),
-            float("VALVE" in proc_upper),
-            float("CABG" in proc_upper),
-            float("TAVR" in proc_upper or "TAVI" in proc_upper),
-            float("AVM" in proc_upper),
-            float("ANEURYSM" in proc_upper),
-            float("ECMO" in proc_upper),
-            float(len(warnings)),
-            float(len(procedure_text) // 100),
-            float(category is not None and "Cardiac" in str(category.value)),
-            float(category is not None and "Intracerebral" in str(category.value)),
-            float(category is not None and "vessel" in str(category.value)),
-        )
 
     @staticmethod
     @lru_cache(maxsize=32768)

@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # ///
 
-"""Match and copy resident Excel files based on a names list."""
+"""Match and copy resident outputs based on a names list."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Literal
 
 
 def normalize_name(raw: str) -> list[str]:
@@ -37,21 +38,48 @@ def normalize_name(raw: str) -> list[str]:
     return candidates
 
 
+type _EntryKind = Literal["directory", "file"]
+
+
+def _discover_available_entries(input_dir: Path) -> tuple[_EntryKind, dict[str, Path]]:
+    """Discover resident outputs from either folder-based or flat-file layouts."""
+    resident_dirs = sorted(path for path in input_dir.iterdir() if path.is_dir())
+    if resident_dirs:
+        return "directory", {path.name.lower(): path for path in resident_dirs}
+
+    excel_files = sorted(input_dir.glob("*.xlsx"))
+    return "file", {path.stem.lower(): path for path in excel_files}
+
+
+def _copy_matched_output(entry_kind: _EntryKind, src: Path, output_dir: Path) -> None:
+    """Copy one matched resident output into the destination directory."""
+    if entry_kind == "directory":
+        shutil.copytree(src, output_dir / src.name, dirs_exist_ok=True)
+        return
+    shutil.copy2(src, output_dir / src.name)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Match and copy resident Excel files based on a names list"
+        description="Match and copy resident outputs based on a names list"
     )
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=Path("Output-Individual"),
-        help="Directory containing processed Excel files (default: Output-Individual)",
+        default=Path("Output"),
+        help=(
+            "Directory containing processed resident folders or Excel files "
+            "(default: Output)"
+        ),
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("Output-Residents"),
-        help="Directory to copy matched files into (default: Output-Residents)",
+        help=(
+            "Directory to copy matched resident outputs into "
+            "(default: Output-Residents)"
+        ),
     )
     parser.add_argument(
         "--names-file",
@@ -80,9 +108,12 @@ def main() -> None:
         print(f"Error: names file not found: {names_file}", file=sys.stderr)
         sys.exit(1)
 
-    available = {f.stem.lower(): f for f in input_dir.glob("*.xlsx")}
+    entry_kind, available = _discover_available_entries(input_dir)
     if not available:
-        print(f"Warning: no .xlsx files found in {input_dir}", file=sys.stderr)
+        print(
+            f"Warning: no resident output folders or .xlsx files found in {input_dir}",
+            file=sys.stderr,
+        )
 
     names = [
         line.strip()
@@ -110,13 +141,14 @@ def main() -> None:
         for name, candidates in unmatched:
             print(f"  {name!r} -> tried: {candidates}")
         if not args.copy:
-            print("\nNo files copied. Use --copy to copy matched files anyway.")
+            print("\nNo outputs copied. Use --copy to copy matched outputs anyway.")
             sys.exit(1)
 
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     for src in matched.values():
-        shutil.copy2(src, output_dir / src.name)
-    print(f"\nCopied {len(matched)} files to {output_dir}/")
+        _copy_matched_output(entry_kind, src, output_dir)
+    copied_label = "resident folder(s)" if entry_kind == "directory" else "file(s)"
+    print(f"\nCopied {len(matched)} {copied_label} to {output_dir}/")
 
 
 if __name__ == "__main__":

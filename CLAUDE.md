@@ -47,7 +47,7 @@ CaseList and ProcedureList CSV files per resident:
 Two standalone scripts for working with supervised export data:
 
 - **`batch_process.py`**: Processes all residents in an `Output-Supervised/`
-  directory tree, writes one Excel file per resident to `Output-Individual/`
+  directory tree, writes one folder per resident to `Output/`
 - **`sort-logs.py`**: Matches Excel files to a names list and copies matched
   files to `Output-Residents/`
 

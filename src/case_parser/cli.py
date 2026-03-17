@@ -8,7 +8,7 @@ import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
 from rich.console import Console
@@ -37,32 +37,18 @@ from .models import (
     STANDALONE_OUTPUT_FORMAT_VERSION,
     ColumnMap,
 )
-from .patterns.block_site_patterns import (
-    NEURAXIAL_BLOCK_SITE_TERMS,
-    PERIPHERAL_BLOCK_SITE_TERMS,
-)
 from .processor import CaseProcessor
+from .standalone_exports import (
+    StandaloneOutputSpec,
+    iter_standalone_case_exports,
+    split_standalone_cases,
+)
 from .validation import ValidationReport
 
 logger = logging.getLogger(__name__)
 console = Console()
-_NEURAXIAL_STANDALONE_HINTS = (
-    "EPIDURAL",
-    "SPINAL",
-    "CSE",
-    "CAUDAL",
-    "CERVICAL",
-    "INTRATHECAL",
-    "LUMBAR",
-    "SUBARACHNOID",
-    "T 1-7",
-    "T 8-12",
-)
-_BLOCK_STANDALONE_HINTS = (
-    "PERIPHERAL NERVE BLOCK",
-    "NERVE BLOCK",
-    "BLOCK",
-)
+__all__ = ["split_standalone_cases"]
+type _ProcessingMode = Literal["excel", "csv_v2"]
 
 
 @dataclass(frozen=True)
@@ -77,11 +63,30 @@ class _ProcessingOptions:
 
 
 @dataclass(frozen=True)
-class _StandaloneOutputSpec:
-    """Metadata describing one standalone orphan output."""
+class _LoadedInput:
+    """Normalized input payload ready for shared processing."""
 
-    suffix: str
-    label: str
+    main_df: DataFrame
+    orphan_df: DataFrame
+
+
+@dataclass(frozen=True)
+class _ProcessingRequest:
+    """Explicit CLI processing request passed into the shared dispatcher."""
+
+    mode: _ProcessingMode
+    input_path: Path
+    output_path: Path | None = None
+    excel_handler: ExcelHandler | None = None
+
+
+@dataclass(frozen=True)
+class _ProcessingResult:
+    """Processed output returned by the shared CLI dispatcher."""
+
+    cases: list[ParsedCase]
+    output_df: DataFrame
+    standalone_case_count: int = 0
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -261,75 +266,59 @@ def find_excel_files(directory: Path) -> list[Path]:
     return sorted(directory.glob("*.xlsx")) + sorted(directory.glob("*.xls"))
 
 
-def process_single_excel_file(
-    file_path: Path,
-    processor: CaseProcessor,
-    options: _ProcessingOptions,
-) -> list[ParsedCase]:
-    """Read and process a single Excel file.
-
-    Args:
-        file_path: Path to the Excel file to process.
-        processor: Initialized CaseProcessor to use for parsing.
-        options: Shared runtime options, including sheet selection and worker
-            count.
-
-    Returns:
-        List of ParsedCase objects. Empty if the file contains no data rows.
-    """
-    console.print(f"[cyan]Processing:[/cyan] {file_path.name}")
-
-    df = read_excel(str(file_path), sheet_name=options.sheet_name or 0)
-
-    if df.empty:
+def _load_excel_input(input_path: Path, options: _ProcessingOptions) -> _LoadedInput:
+    """Read one Excel file or directory of Excel files into one processing payload."""
+    if input_path.is_file():
+        excel_files = [input_path]
+    else:
+        excel_files = find_excel_files(input_path)
         console.print(
-            f"[yellow]  Warning:[/yellow] {file_path.name} is empty, skipping"
+            f"\n[bold cyan]Found {len(excel_files)} Excel file(s) "
+            f"in directory[/bold cyan]\n"
         )
-        return []
 
-    cases = processor.process_dataframe(df, workers=options.workers)
-    console.print(
-        f"[green]  OK[/green] Parsed {len(cases)} cases from {file_path.name}"
-    )
-    return cases
-
-
-def process_excel_directory(
-    directory: Path,
-    processor: CaseProcessor,
-    options: _ProcessingOptions,
-) -> list[ParsedCase]:
-    """Process all Excel files in a directory.
-
-    Args:
-        directory: Directory containing Excel files to process.
-        processor: Initialized CaseProcessor to use for parsing.
-        options: Shared runtime options applied to every file in the directory.
-
-    Returns:
-        Combined list of ParsedCase objects from all files in the directory.
-    """
-    excel_files = find_excel_files(directory)
-    console.print(
-        f"\n[bold cyan]Found {len(excel_files)} Excel file(s) "
-        f"in directory[/bold cyan]\n"
-    )
-
-    all_cases: list[ParsedCase] = []
+    frames: list[DataFrame] = []
+    loaded_file_count = 0
     for excel_file in excel_files:
-        all_cases.extend(
-            process_single_excel_file(
-                excel_file,
-                processor,
-                options,
+        console.print(f"[cyan]Reading:[/cyan] {excel_file.name}")
+        df = read_excel(str(excel_file), sheet_name=options.sheet_name or 0)
+        if df.empty:
+            console.print(
+                f"[yellow]  Warning:[/yellow] {excel_file.name} is empty, skipping"
             )
+            continue
+        loaded_file_count += 1
+        console.print(
+            f"[green]  OK[/green] Loaded {len(df)} rows from {excel_file.name}"
+        )
+        frames.append(df)
+
+    if input_path.is_dir():
+        console.print(
+            f"\n[bold green]Loaded {loaded_file_count} non-empty file(s), "
+            f"total {sum(len(frame) for frame in frames)} row(s)[/bold green]\n"
         )
 
+    combined = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return _LoadedInput(main_df=combined, orphan_df=pd.DataFrame())
+
+
+def _load_csv_input(
+    input_path: Path,
+    columns: ColumnMap,
+    output_path: Path,
+) -> _LoadedInput:
+    """Read CSV v2 input into the shared processing payload."""
     console.print(
-        f"\n[bold green]Processed {len(excel_files)} files, "
-        f"total {len(all_cases)} cases[/bold green]\n"
+        Panel(
+            f"[cyan]Processing CSV v2 format from:[/cyan] {input_path}\n"
+            f"[cyan]Output file:[/cyan] {output_path}",
+            title="CSV v2 Mode",
+            border_style="cyan",
+        )
     )
-    return all_cases
+    main_df, orphan_df = CsvHandler(columns).read(input_path)
+    return _LoadedInput(main_df=main_df, orphan_df=orphan_df)
 
 
 def _build_processor(columns: ColumnMap, options: _ProcessingOptions) -> CaseProcessor:
@@ -342,103 +331,76 @@ def _build_processor(columns: ColumnMap, options: _ProcessingOptions) -> CasePro
     )
 
 
-def process_excel(
-    input_path: Path,
+def _load_input(
+    request: _ProcessingRequest,
     columns: ColumnMap,
     options: _ProcessingOptions,
-) -> tuple[list[ParsedCase], DataFrame]:
-    """Dispatch Excel processing for a single file or a directory.
+) -> _LoadedInput:
+    """Load input data for the selected CLI processing mode."""
+    if request.mode == "excel":
+        return _load_excel_input(request.input_path, options)
+    if request.output_path is None:
+        raise ValueError("output_path is required for csv_v2 processing")
+    return _load_csv_input(request.input_path, columns, request.output_path)
+
+
+def process_input(
+    request: _ProcessingRequest,
+    columns: ColumnMap,
+    options: _ProcessingOptions,
+) -> _ProcessingResult:
+    """Dispatch CLI processing through one shared read/process/export path.
 
     Args:
-        input_path: Path to an Excel file or directory of Excel files.
+        request: Explicit processing request including mode and I/O paths.
         columns: Column mapping configuration.
-        options: Shared runtime options, including default year, optional sheet
-            selection, ML usage, and worker count.
+        options: Shared runtime options.
 
     Returns:
-        Tuple of (cases, output_df) where cases is the list of ParsedCase objects
-        and output_df is the corresponding output-formatted DataFrame.
+        Processed cases, output dataframe, and standalone output count.
     """
     processor = _build_processor(columns, options)
-
-    if input_path.is_file():
-        cases = process_single_excel_file(input_path, processor, options)
-    else:
-        cases = process_excel_directory(input_path, processor, options)
-
-    output_df = CaseProcessor.cases_to_dataframe(cases)
-    return cases, output_df
-
-
-def process_csv(
-    input_path: Path,
-    output_path: Path,
-    columns: ColumnMap,
-    excel_handler: ExcelHandler,
-    options: _ProcessingOptions,
-) -> tuple[list[ParsedCase], DataFrame, int]:
-    """Process a CSV v2 directory (MPOG supervised export).
-
-    Reads matched CaseList/ProcedureList CSV pairs, processes all cases, and
-    writes separate standalone files for orphan blocks and neuraxial
-    procedures derived from unmatched ProcedureList rows.
-
-    Args:
-        input_path: Directory containing CSV v2 file pairs.
-        output_path: Desired path for the primary output Excel file (used to
-            derive standalone orphan output filenames).
-        columns: Column mapping configuration.
-        excel_handler: ExcelHandler instance used to write standalone output.
-        options: Shared runtime options, including default year, ML usage, and
-            worker count.
-
-    Returns:
-        Tuple of (cases, output_df, standalone_case_count) for the main
-        matched cases plus the number of standalone orphan procedures written
-        to separate outputs.
-    """
-    console.print(
-        Panel(
-            f"[cyan]Processing CSV v2 format from:[/cyan] {input_path}\n"
-            f"[cyan]Output file:[/cyan] {output_path}",
-            title="CSV v2 Mode",
-            border_style="cyan",
-        )
+    loaded_input = _load_input(
+        request=request,
+        columns=columns,
+        options=options,
     )
 
-    df, orphan_df = CsvHandler(columns).read(input_path)
-    processor = _build_processor(columns, options)
-    all_cases = processor.process_dataframe(df, workers=options.workers)
+    all_cases = processor.process_dataframe(
+        loaded_input.main_df,
+        workers=options.workers,
+    )
     output_df = processor.cases_to_dataframe(all_cases)
 
     standalone_case_count = 0
-    if not orphan_df.empty:
-        orphan_cases = processor.process_dataframe(orphan_df, workers=options.workers)
-        block_cases, neuraxial_cases = split_standalone_cases(orphan_cases)
-        standalone_case_count = len(block_cases) + len(neuraxial_cases)
-
-        _write_standalone_output(
-            processor=processor,
-            excel_handler=excel_handler,
-            output_path=output_path,
-            cases=block_cases,
-            spec=_StandaloneOutputSpec(
-                suffix="standalone_blocks",
-                label="Standalone blocks",
-            ),
+    if not loaded_input.orphan_df.empty:
+        if (
+            request.mode != "csv_v2"
+            or request.output_path is None
+            or request.excel_handler is None
+        ):
+            raise ValueError(
+                "csv_v2 standalone outputs require output_path and excel_handler"
+            )
+        orphan_cases = processor.process_dataframe(
+            loaded_input.orphan_df,
+            workers=options.workers,
         )
-        _write_standalone_output(
-            processor=processor,
-            excel_handler=excel_handler,
-            output_path=output_path,
-            cases=neuraxial_cases,
-            spec=_StandaloneOutputSpec(
-                suffix="standalone_neuraxial",
-                label="Standalone neuraxial",
-            ),
-        )
+        for spec, export_cases in iter_standalone_case_exports(orphan_cases):
+            standalone_case_count += len(export_cases)
+            _write_standalone_output(
+                processor=processor,
+                excel_handler=request.excel_handler,
+                output_path=request.output_path,
+                cases=export_cases,
+                spec=spec,
+            )
 
-    return all_cases, output_df, standalone_case_count
+    return _ProcessingResult(
+        cases=all_cases,
+        output_df=output_df,
+        standalone_case_count=standalone_case_count,
+    )
 
 
 def _write_standalone_output(
@@ -447,7 +409,7 @@ def _write_standalone_output(
     excel_handler: ExcelHandler,
     output_path: Path,
     cases: list[ParsedCase],
-    spec: _StandaloneOutputSpec,
+    spec: StandaloneOutputSpec,
 ) -> None:
     """Write one standalone orphan-procedure workbook when rows are present."""
     if not cases:
@@ -466,82 +428,6 @@ def _write_standalone_output(
     console.print(
         f"[cyan]{spec.label}:[/cyan] {standalone_path} ({len(cases)} procedure(s))"
     )
-
-
-def _standalone_case_search_text(case: ParsedCase) -> str:
-    """Build a single uppercase search string for standalone-case routing."""
-    return " ".join(
-        value
-        for value in (
-            case.raw_anesthesia_type,
-            case.raw_nerve_block_type,
-            case.unmatched_block_source,
-            case.procedure,
-            case.procedure_notes,
-            case.nerve_block_type,
-        )
-        if value
-    ).upper()
-
-
-def is_neuraxial_standalone_case(case: ParsedCase) -> bool:
-    """Return True when standalone procedure text indicates neuraxial technique."""
-    search_text = _standalone_case_search_text(case)
-    return any(hint in search_text for hint in _NEURAXIAL_STANDALONE_HINTS)
-
-
-def is_block_standalone_case(case: ParsedCase) -> bool:
-    """Return True when standalone procedure text indicates a block technique."""
-    search_text = _standalone_case_search_text(case)
-    return any(hint in search_text for hint in _BLOCK_STANDALONE_HINTS)
-
-
-def _normalized_block_terms(case: ParsedCase) -> set[str]:
-    """Split normalized standalone block-site text into canonical terms."""
-    if not case.nerve_block_type:
-        return set()
-    return {
-        term.strip()
-        for term in case.nerve_block_type.split(";")
-        if term and term.strip()
-    }
-
-
-def _has_normalized_peripheral_block(case: ParsedCase) -> bool:
-    """Return True when normalized standalone block text is peripheral."""
-    return bool(_normalized_block_terms(case) & set(PERIPHERAL_BLOCK_SITE_TERMS))
-
-
-def _has_normalized_neuraxial_block(case: ParsedCase) -> bool:
-    """Return True when normalized standalone block text is neuraxial."""
-    return bool(_normalized_block_terms(case) & set(NEURAXIAL_BLOCK_SITE_TERMS))
-
-
-def split_standalone_cases(
-    cases: list[ParsedCase],
-) -> tuple[list[ParsedCase], list[ParsedCase]]:
-    """Split standalone orphan procedures into block and neuraxial buckets.
-
-    Cases with explicit neuraxial hints route to the neuraxial output. Cases
-    with block hints or a normalized block site route to the block output.
-    Remaining unmatched procedures intentionally fall back to the neuraxial
-    bucket.
-    """
-    block_cases: list[ParsedCase] = []
-    neuraxial_cases: list[ParsedCase] = []
-
-    for case in cases:
-        if _has_normalized_peripheral_block(case) or is_block_standalone_case(case):
-            block_cases.append(case)
-            continue
-        if _has_normalized_neuraxial_block(case) or is_neuraxial_standalone_case(case):
-            neuraxial_cases.append(case)
-            continue
-        # Intentional fallback for unmatched procedures; see
-        # test_split_standalone_cases_defaults_unknown_to_neuraxial_bucket.
-        neuraxial_cases.append(case)
-
-    return block_cases, neuraxial_cases
 
 
 def save_validation_report(cases: list[ParsedCase], report_path: Path) -> None:
@@ -665,8 +551,8 @@ def main() -> None:
     path (Excel workbook input or CSV v2 directory input), optionally writes a
     validation report, writes the primary output workbook, and prints a
     summary. In CSV v2 mode, standalone orphan procedures may also be written
-    to separate block and neuraxial workbooks. Exits with a non-zero status
-    code on any error.
+    to separate block and combined neuraxial/delivery workbooks. Exits with a
+    non-zero status code on any error.
     """
     parser = build_arg_parser()
     args = parser.parse_args()
@@ -686,21 +572,19 @@ def main() -> None:
             workers=args.workers,
         )
 
-        standalone_case_count = 0
-        if args.v2:
-            all_cases, output_df, standalone_case_count = process_csv(
-                input_path,
-                output_path,
-                columns,
-                excel_handler,
-                options,
-            )
-        else:
-            all_cases, output_df = process_excel(
-                input_path,
-                columns,
-                options,
-            )
+        processing_result = process_input(
+            request=_ProcessingRequest(
+                mode="csv_v2" if args.v2 else "excel",
+                input_path=input_path,
+                output_path=output_path if args.v2 else None,
+                excel_handler=excel_handler if args.v2 else None,
+            ),
+            columns=columns,
+            options=options,
+        )
+        all_cases = processing_result.cases
+        output_df = processing_result.output_df
+        standalone_case_count = processing_result.standalone_case_count
 
         if not all_cases:
             if standalone_case_count:

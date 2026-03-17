@@ -99,6 +99,7 @@ class ReviewSessionMetrics:
     """Aggregated outcomes for a review session."""
 
     reviewed_this_session: int = 0
+    labels_recorded: int = 0
     accepted_recommended: int = 0
     skipped: int = 0
     staged_labels: list[dict[str, Any]] = field(default_factory=list)
@@ -124,6 +125,7 @@ class ReviewConfig:
     max_cases: int | None
     ui_mode: str
     resume: bool
+    retrain_on_complete: bool
 
 
 @dataclass
@@ -286,9 +288,15 @@ class ReviewApp(App):
         self.metrics = ReviewSessionMetrics()
         self.current_index = 0
         self.input_buffer = ""
+        retrain_hint = (
+            " | complete queue => retrain"
+            if runtime.config.retrain_on_complete
+            else ""
+        )
         self.status_message = (
             "f=left rule, j=right ML, space=recommendation, "
             "o=Other, 1-11+Enter=override, s=skip, q=quit"
+            f"{retrain_hint}"
         )
 
     @override
@@ -358,10 +366,13 @@ class ReviewApp(App):
                 ),
                 (
                     f"Reviewed: {self.metrics.reviewed_this_session} | "
+                    f"Labeled: {self.metrics.labels_recorded} | "
                     "Accepted recommended: "
                     f"{self.metrics.accepted_recommended} | "
                     f"Skipped: {self.metrics.skipped} | "
-                    f"Focus: {focus} | Threshold: {threshold:.2f}"
+                    f"Focus: {focus} | Threshold: {threshold:.2f} | "
+                    "Auto-retrain: "
+                    f"{'on' if self.runtime.config.retrain_on_complete else 'off'}"
                 ),
             ])
         )
@@ -830,6 +841,7 @@ def _apply_review_choice(
     if choice in {"a", " "}:
         metrics.accepted_recommended += 1
 
+    metrics.labels_recorded += 1
     metrics.staged_labels.append(_label_record(case, selected))
     _mark_reviewed(case, runtime, metrics)
 
@@ -987,8 +999,10 @@ def _print_review_summary(metrics: ReviewSessionMetrics, output_path: Path) -> N
     summary.add_column("Metric")
     summary.add_column("Value", justify="right")
     summary.add_row("Reviewed this session", str(metrics.reviewed_this_session))
+    summary.add_row("Labels recorded", str(metrics.labels_recorded))
     summary.add_row("Accepted recommended", str(metrics.accepted_recommended))
     summary.add_row("Skipped", str(metrics.skipped))
+    summary.add_row("Quit early", "yes" if metrics.quit_requested else "no")
     summary.add_row("Output file", str(output_path))
     console.print(summary)
 
@@ -1032,6 +1046,7 @@ def _build_review_config(args: argparse.Namespace) -> ReviewConfig:
         max_cases=args.max_cases,
         ui_mode=args.ui,
         resume=args.resume,
+        retrain_on_complete=args.retrain_on_complete,
     )
 
 
@@ -1125,6 +1140,72 @@ def _run_review_interface(
         return _run_review_classic(queue, runtime)
 
 
+def _print_next_retrain_step(args: argparse.Namespace, review_output: Path) -> None:
+    """Print the follow-up retrain command for a completed review session.
+
+    Args:
+        args: Parsed review-command arguments carrying retrain defaults.
+        review_output: Path to the saved review-label CSV.
+    """
+    retrain_args = _build_review_retrain_args(args, review_output=review_output)
+    command_parts = [
+        sys.executable,
+        str(PROJECT_ROOT / "ml_training" / "workbench.py"),
+        "retrain",
+        "--review-labels",
+        retrain_args.review_labels,
+        "--model",
+        str(Path(retrain_args.model).resolve()),
+    ]
+    if Path(retrain_args.seen_data).resolve() != DEFAULT_SEEN_DATA.resolve():
+        command_parts.extend([
+            "--seen-data",
+            str(Path(retrain_args.seen_data).resolve()),
+        ])
+    if Path(retrain_args.unseen_data).resolve() != DEFAULT_UNSEEN_DATA.resolve():
+        command_parts.extend([
+            "--unseen-data",
+            str(Path(retrain_args.unseen_data).resolve()),
+        ])
+    if (
+        Path(retrain_args.retrain_data_output).resolve()
+        != DEFAULT_RETRAIN_DATA.resolve()
+    ):
+        command_parts.extend([
+            "--retrain-data-output",
+            str(Path(retrain_args.retrain_data_output).resolve()),
+        ])
+    if (
+        Path(retrain_args.eval_data_output).resolve()
+        != DEFAULT_REMAINING_EVAL_DATA.resolve()
+    ):
+        command_parts.extend([
+            "--eval-data-output",
+            str(Path(retrain_args.eval_data_output).resolve()),
+        ])
+    if retrain_args.label_column != "rule_category":
+        command_parts.extend(["--label-column", retrain_args.label_column])
+    if retrain_args.eval_label_column is not None:
+        command_parts.extend(["--eval-label-column", retrain_args.eval_label_column])
+    if retrain_args.hybrid_threshold != DEFAULT_ML_THRESHOLD:
+        command_parts.extend([
+            "--hybrid-threshold",
+            str(retrain_args.hybrid_threshold),
+        ])
+    if retrain_args.force:
+        command_parts.append("--force")
+    if retrain_args.skip_evaluate:
+        command_parts.append("--skip-evaluate")
+    if retrain_args.cross_validate:
+        command_parts.append("--cross-validate")
+    command = " ".join(command_parts)
+    console.print(
+        "\n[bold green]Next:[/bold green] "
+        "Retrain the model with your saved labels:\n"
+        f"`{command}`"
+    )
+
+
 def _review_command(args: argparse.Namespace) -> int:
     """Run streamlined interactive correction workflow.
 
@@ -1146,7 +1227,30 @@ def _review_command(args: argparse.Namespace) -> int:
         _save_review_labels(runtime.paths.output_path, metrics.staged_labels)
 
     _print_review_summary(metrics, runtime.paths.output_path)
-    return 0
+    if metrics.labels_recorded == 0:
+        console.print(
+            "[yellow]No labels were recorded this session; skipping retrain.[/yellow]"
+        )
+        return 0
+    if metrics.quit_requested:
+        console.print(
+            "[yellow]Review ended early; skipping auto-retrain.[/yellow]"
+        )
+        _print_next_retrain_step(args, runtime.paths.output_path)
+        return 0
+    if not runtime.config.retrain_on_complete:
+        _print_next_retrain_step(args, runtime.paths.output_path)
+        return 0
+
+    console.print(
+        "\n[bold cyan]Review complete.[/bold cyan] "
+        "Starting retrain with saved overrides."
+    )
+    retrain_args = _build_review_retrain_args(
+        args,
+        review_output=runtime.paths.output_path,
+    )
+    return _retrain_command(retrain_args)
 
 
 def _normalize_procedure_key(value: Any) -> str:
@@ -1591,6 +1695,36 @@ def _build_eval_args(
     )
 
 
+def _build_review_retrain_args(
+    args: argparse.Namespace,
+    *,
+    review_output: Path,
+) -> argparse.Namespace:
+    """Build retrain command arguments from the completed review session.
+
+    Args:
+        args: Parsed review-command arguments, including optional retrain flags.
+        review_output: Path to the persisted review-label CSV written by review.
+
+    Returns:
+        Namespace suitable for passing directly to ``_retrain_command``.
+    """
+    return argparse.Namespace(
+        seen_data=getattr(args, "seen_data", DEFAULT_SEEN_DATA),
+        unseen_data=getattr(args, "unseen_data", DEFAULT_UNSEEN_DATA),
+        review_labels=str(review_output),
+        retrain_data_output=getattr(args, "retrain_data_output", DEFAULT_RETRAIN_DATA),
+        eval_data_output=getattr(args, "eval_data_output", DEFAULT_REMAINING_EVAL_DATA),
+        model=args.model,
+        label_column=getattr(args, "label_column", "rule_category"),
+        eval_label_column=getattr(args, "eval_label_column", None),
+        hybrid_threshold=getattr(args, "hybrid_threshold", DEFAULT_ML_THRESHOLD),
+        cross_validate=getattr(args, "cross_validate", False),
+        skip_evaluate=getattr(args, "skip_evaluate", False),
+        force=getattr(args, "force", False),
+    )
+
+
 def _print_next_review_step(model_path: Path, data_path: Path) -> None:
     """
     Prints a suggested CLI command to launch the review stage using the given model
@@ -1605,11 +1739,12 @@ def _print_next_review_step(model_path: Path, data_path: Path) -> None:
         f"{sys.executable} "
         f"{PROJECT_ROOT / 'ml_training' / 'workbench.py'} review "
         f"--model {model_path} "
-        f"--data {data_path}"
+        f"--data {data_path} "
+        "--retrain-on-complete --force"
     )
     console.print(
         "\n[bold green]Next:[/bold green] "
-        "Launch streamlined correction review with:\n"
+        "Launch streamlined correction review and auto-retrain with:\n"
         f"`{command}`"
     )
 
@@ -1693,8 +1828,8 @@ def _print_cli_overview() -> None:
     commands.add_row("run", "Prepare, split, train, evaluate", "run --force")
     commands.add_row(
         "review",
-        "Review predictions and save overrides",
-        "review --resume",
+        "Review predictions, save overrides, optionally retrain",
+        "review --resume --retrain-on-complete --force",
     )
     commands.add_row(
         "retrain",
@@ -1726,9 +1861,8 @@ def _print_cli_overview() -> None:
     workflow = (
         "Recommended loop:\n"
         "  1) run --force\n"
-        "  2) review --resume\n"
-        "  3) retrain --force\n"
-        "  4) review --resume  (repeat)"
+        "  2) review --resume --retrain-on-complete --force\n"
+        "  3) review --resume --retrain-on-complete --force  (repeat)"
     )
     console.print(Panel.fit(workflow, title="Workflow", border_style="magenta"))
     console.print(commands)
@@ -1749,8 +1883,8 @@ def _parser_epilog() -> str:
         "  Initial model build:\n"
         "    python ml_training/workbench.py run --force\n"
         "  Review + override loop:\n"
-        "    python ml_training/workbench.py review --resume\n"
-        "    python ml_training/workbench.py retrain --force\n"
+        "    python ml_training/workbench.py review --resume "
+        "--retrain-on-complete --force\n"
         "  Build airway/anesthesia review set:\n"
         "    python ml_training/workbench.py airway-review-set\n"
         "  Evaluate latest model:\n"
@@ -1929,7 +2063,8 @@ def _configure_review_parser(subparsers: argparse._SubParsersAction) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  python ml_training/workbench.py review --resume\n"
+            "  python ml_training/workbench.py review "
+            "--resume --retrain-on-complete --force\n"
             "  python ml_training/workbench.py review --ui classic\n"
             "  python ml_training/workbench.py review "
             "--focus disagreement --max-cases 300"
@@ -1960,6 +2095,35 @@ def _configure_review_parser(subparsers: argparse._SubParsersAction) -> None:
         default="tui",
         help="Review interface mode (default: tui)",
     )
+    review_parser.add_argument(
+        "--retrain-on-complete",
+        action="store_true",
+        help=(
+            "Automatically run retrain when the review queue finishes "
+            "without quitting early"
+        ),
+    )
+    review_parser.add_argument("--seen-data", default=DEFAULT_SEEN_DATA)
+    review_parser.add_argument("--unseen-data", default=DEFAULT_UNSEEN_DATA)
+    review_parser.add_argument(
+        "--retrain-data-output",
+        default=DEFAULT_RETRAIN_DATA,
+        help="Merged retrain dataset output path for auto-retrain",
+    )
+    review_parser.add_argument(
+        "--eval-data-output",
+        default=DEFAULT_REMAINING_EVAL_DATA,
+        help="Remaining unseen evaluation dataset output path for auto-retrain",
+    )
+    review_parser.add_argument(
+        "--label-column",
+        default="rule_category",
+        help="Training label column to overwrite during auto-retrain",
+    )
+    review_parser.add_argument("--cross-validate", action="store_true")
+    review_parser.add_argument("--skip-evaluate", action="store_true")
+    review_parser.add_argument("--force", action="store_true")
+    _add_eval_label_argument(review_parser)
 
 
 def _configure_run_parser(subparsers: argparse._SubParsersAction) -> None:
