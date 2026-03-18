@@ -9,10 +9,9 @@ description = "A tool for processing anesthesia case data from Excel files and c
 readme = "README.md"
 license = "Apache-2.0"
 authors = [ { name = "Razvan Azamfirei", email = "razvan@azamfirei.dev" } ]
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
@@ -37,9 +36,6 @@ dev = [
   "textual>=8.0.2",
   "ty>=0.0.21",
   "types-pytz>=2026.1.1.20260304",
-]
-ml = [
-  "textual>=8.0.2",
 ]
 
 [tool.hatch]
@@ -72,4 +68,4 @@ skip_covered = true
 output = "coverage.xml"
 
 [tool.ty]
-environment.python-version = "3.12"
+environment.python-version = "3.13"

@@ -1,7 +1,7 @@
 exclude        = [".claude/"]
 indent-width   = 4
 line-length    = 88
-target-version = "py312"
+target-version = "py313"
 
 [lint]
   fixable = ["ALL"]

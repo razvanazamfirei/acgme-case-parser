@@ -597,14 +597,25 @@ def _discover_pair_paths(base_dir: Path) -> list[tuple[Path, Path]]:
             f"Expected {base_dir} to contain case-list/ and procedure-list/ subdirs"
         )
 
-    case_files = {
-        normalize_stem(path.name.removesuffix(".CaseList.csv")): path
-        for path in case_dir.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        normalize_stem(path.name.removesuffix(".ProcedureList.csv")): path
-        for path in proc_dir.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for path in case_dir.glob("*.CaseList.csv"):
+        key = normalize_stem(path.name.removesuffix(".CaseList.csv"))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from case-list files: "
+                f"{case_files[key].name!r} and {path.name!r}"
+            )
+        case_files[key] = path
+
+    proc_files: dict[str, Path] = {}
+    for path in proc_dir.glob("*.ProcedureList.csv"):
+        key = normalize_stem(path.name.removesuffix(".ProcedureList.csv"))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from procedure-list files: "
+                f"{proc_files[key].name!r} and {path.name!r}"
+            )
+        proc_files[key] = path
     common = sorted(set(case_files) & set(proc_files))
     return [(case_files[name], proc_files[name]) for name in common]
 

@@ -12,6 +12,10 @@ from ..patterns.categorization import categorize_procedures
 from .config import DEFAULT_ML_THRESHOLD
 from .predictor import MLPredictor
 
+SERVICE_LIST_LENGTH_MISMATCH_MSG = (
+    "services_list must match procedure_texts length in classify_many"
+)
+
 
 class MLPredictorLike(Protocol):
     """Structural contract used by the hybrid classifier at inference time."""
@@ -146,9 +150,7 @@ class HybridClassifier:
         if services_list is None:
             return [[] for _ in procedure_texts]
         if len(services_list) != len(procedure_texts):
-            raise ValueError(
-                "services_list must match procedure_texts length in classify_many"
-            )
+            raise ValueError(SERVICE_LIST_LENGTH_MISMATCH_MSG)
         return services_list
 
     @staticmethod

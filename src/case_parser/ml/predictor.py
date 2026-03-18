@@ -230,10 +230,10 @@ class MLPredictor:
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> list[str] | NDArray[Any]:
+    ) -> NDArray[Any]:
         """Predict categories for multiple procedures."""
         if not procedure_texts:
-            return []
+            return np.array([], dtype=object)
         return self.pipeline.predict(
             build_feature_inputs(
                 procedure_texts,
@@ -263,10 +263,11 @@ class MLPredictor:
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> list[NDArray[Any]] | NDArray[Any]:
+    ) -> NDArray[Any]:
         """Get prediction probabilities for multiple procedures."""
         if not procedure_texts:
-            return []
+            n_classes = len(getattr(self.pipeline, "classes_", []))
+            return np.empty((0, n_classes))
         return self.pipeline.predict_proba(
             build_feature_inputs(
                 procedure_texts,

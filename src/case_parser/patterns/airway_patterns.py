@@ -163,7 +163,7 @@ def extract_airway_management(  # noqa: PLR0914, PLR0915
         techniques, findings = extract_airway_management(notes)
         # techniques: [AirwayManagement.ORAL_ETT, AirwayManagement.VIDEO_LARYNGOSCOPE]
     """
-    if notes is None or (isinstance(notes, float) and pd.isna(notes)):
+    if pd.isna(notes):
         return [], []
 
     text = str(notes)

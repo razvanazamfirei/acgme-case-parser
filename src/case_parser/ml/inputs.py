@@ -79,11 +79,14 @@ def feature_input_from_raw(
         return item
 
     if isinstance(item, Mapping):
+        service_text = coerce_text(item.get("service_text", ""))
+        if not service_text:
+            service_text = _coerce_service_alias_value(item)
         return FeatureInput(
             procedure_text=coerce_text(
                 item.get("procedure_text", item.get("procedure", ""))
             ),
-            service_text=_coerce_service_alias_value(item),
+            service_text=service_text,
             rule_category=coerce_text(item.get("rule_category", "")),
             rule_warning_count=parse_int(item.get("rule_warning_count", 0)),
         )

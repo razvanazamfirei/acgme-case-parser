@@ -84,15 +84,30 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
     Returns:
         Sorted list of ``(name, case_path, proc_path)`` tuples for residents
         that have both a CaseList and a ProcedureList file.
+
+    Raises:
+        ValueError: When multiple raw filenames normalize to the same key.
     """
-    case_files = {
-        normalize_stem(f.name.removesuffix(".CaseList.csv")): f
-        for f in case_dir.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        normalize_stem(f.name.removesuffix(".ProcedureList.csv")): f
-        for f in proc_dir.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for f in case_dir.glob("*.CaseList.csv"):
+        key = normalize_stem(f.name.removesuffix(".CaseList.csv"))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from CaseList files: "
+                f"{case_files[key].name!r} and {f.name!r}"
+            )
+        case_files[key] = f
+
+    proc_files: dict[str, Path] = {}
+    for f in proc_dir.glob("*.ProcedureList.csv"):
+        key = normalize_stem(f.name.removesuffix(".ProcedureList.csv"))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from ProcedureList files: "
+                f"{proc_files[key].name!r} and {f.name!r}"
+            )
+        proc_files[key] = f
+
     common = sorted(set(case_files) & set(proc_files))
     return [(name, case_files[name], proc_files[name]) for name in common]
 

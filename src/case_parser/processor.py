@@ -431,7 +431,7 @@ class CaseProcessor:
         confidence_scores.extend(f.confidence for f in new_findings)
 
     @staticmethod
-    def _split_services(raw_services: object) -> list[str]:
+    def _split_services(raw_services: Scalar) -> list[str]:
         """Split a multiline services field into normalized items."""
         if pd.isna(raw_services):
             return []
@@ -445,7 +445,7 @@ class CaseProcessor:
         return str(value)
 
     @staticmethod
-    def _trimmed_optional_str(value: object, max_length: int) -> str | None:
+    def _trimmed_optional_str(value: Scalar, max_length: int) -> str | None:
         """Convert to string and trim to max_length, preserving nulls."""
         optional_value = CaseProcessor._optional_str(value)
         if optional_value is None:
@@ -453,7 +453,7 @@ class CaseProcessor:
         return optional_value[:max_length]
 
     @staticmethod
-    def _optional_float(value: object) -> float | None:
+    def _optional_float(value: Scalar) -> float | None:
         """Convert non-null values to float, preserving nulls."""
         if pd.isna(value):
             return None
@@ -463,7 +463,7 @@ class CaseProcessor:
             return None
 
     @staticmethod
-    def _clean_provider_name(value: object) -> str | None:
+    def _clean_provider_name(value: Scalar) -> str | None:
         """Normalize provider names when present."""
         if pd.isna(value):
             return None

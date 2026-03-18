@@ -374,14 +374,25 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     """
     directory = Path(directory)
 
-    case_files = {
-        normalize_stem(f.name.replace(".CaseList.csv", "")): f
-        for f in directory.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        normalize_stem(f.name.replace(".ProcedureList.csv", "")): f
-        for f in directory.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for f in directory.glob("*.CaseList.csv"):
+        key = normalize_stem(f.name.replace(".CaseList.csv", ""))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from CaseList files: "
+                f"{case_files[key].name!r} and {f.name!r}"
+            )
+        case_files[key] = f
+
+    proc_files: dict[str, Path] = {}
+    for f in directory.glob("*.ProcedureList.csv"):
+        key = normalize_stem(f.name.replace(".ProcedureList.csv", ""))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from ProcedureList files: "
+                f"{proc_files[key].name!r} and {f.name!r}"
+            )
+        proc_files[key] = f
 
     common_prefixes = set(case_files.keys()) & set(proc_files.keys())
 

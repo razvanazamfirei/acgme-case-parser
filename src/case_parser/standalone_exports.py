@@ -31,6 +31,10 @@ NEURAXIAL_DELIVERY_OUTPUT_SPEC = StandaloneOutputSpec(
     suffix="ob",
     label="OB",
 )
+UNMATCHED_OUTPUT_SPEC = StandaloneOutputSpec(
+    suffix="unmatched",
+    label="Unmatched",
+)
 
 
 def _standalone_case_search_text(case: ParsedCase) -> str:
@@ -111,8 +115,9 @@ def iter_standalone_case_exports(
     cases: list[ParsedCase],
 ) -> list[tuple[StandaloneOutputSpec, list[ParsedCase]]]:
     """Return standalone export specs paired with their routed case lists."""
-    block_cases, ob_cases, _unmatched = split_standalone_cases(cases)
+    block_cases, ob_cases, unmatched_cases = split_standalone_cases(cases)
     return [
         (BLOCKS_OUTPUT_SPEC, block_cases),
         (NEURAXIAL_DELIVERY_OUTPUT_SPEC, ob_cases),
+        (UNMATCHED_OUTPUT_SPEC, unmatched_cases),
     ]

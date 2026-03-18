@@ -22,7 +22,13 @@ from case_parser.utils import format_name
 _CASE_LIST_DIR = "case-list"
 _ATTENDING_COLUMN = "AnesAttendings"
 _RESIDENT_LIST_PATH = Path("anesthesia-residents.txt")
-_TITLE_PATTERN = re.compile(r"\b(MD|DO|PhD|CRNA|RN)\b", flags=re.IGNORECASE)
+# Match credential suffixes at end or after comma (e.g. "Name, MD")
+# Allows multiple credentials: "Smith, MD, PhD"
+_TITLE_PATTERN = re.compile(
+    r"(?:,\s*)?(?:M\.?D\.?|D\.?O\.?|Ph\.?D\.?|CRNA|R\.?N\.?)"
+    r"(?:\s*,\s*(?:M\.?D\.?|D\.?O\.?|Ph\.?D\.?|CRNA|R\.?N\.?))*\s*$",
+    flags=re.IGNORECASE,
+)
 _TRAILING_COMMA_PATTERN = re.compile(r",\s*$")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 
@@ -63,6 +69,7 @@ def _normalize_resident_name(raw: str) -> list[str]:
     """Return candidate display names for a resident list entry."""
     no_parens = re.sub(r"\s*\([^)]+\)", "", raw).strip()
     no_quotes = re.sub(r'\s*"[^"]+"\s*', " ", no_parens).strip()
+    no_quotes = _WHITESPACE_PATTERN.sub(" ", no_quotes).strip()
     words = no_quotes.split()
     candidates = [no_quotes]
     if len(words) >= 3:
@@ -101,7 +108,7 @@ def collect_attending_counts(
     if not directory.exists():
         return []
 
-    for csv_path in sorted(directory.glob("*.csv")):
+    for csv_path in sorted(directory.glob("*.CaseList.csv")):
         resident_name = format_name(csv_path.name.removesuffix(".CaseList.csv"))
         if resident_name.lower() not in resident_keys:
             continue

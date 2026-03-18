@@ -81,7 +81,10 @@ class FeatureExtractor:
         self._is_fitted = True
         return self
 
-    def transform(self, procedures: list[object]) -> csr_matrix:
+    def transform(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> csr_matrix:
         """Transform procedures to feature matrix."""
         if not self._is_fitted:
             raise ValueError("FeatureExtractor must be fitted before transform")

@@ -6,7 +6,7 @@ import argparse
 import logging
 import sys
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -87,6 +87,7 @@ class _ProcessingResult:
     cases: list[ParsedCase]
     output_df: DataFrame
     standalone_case_count: int = 0
+    standalone_cases: list[ParsedCase] = field(default_factory=list)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -373,6 +374,7 @@ def process_input(
     output_df = processor.cases_to_dataframe(all_cases)
 
     standalone_case_count = 0
+    standalone_cases: list[ParsedCase] = []
     if not loaded_input.orphan_df.empty:
         if (
             request.mode != "csv_v2"
@@ -388,6 +390,7 @@ def process_input(
         )
         for spec, export_cases in iter_standalone_case_exports(orphan_cases):
             standalone_case_count += len(export_cases)
+            standalone_cases.extend(export_cases)
             _write_standalone_output(
                 processor=processor,
                 excel_handler=request.excel_handler,
@@ -402,6 +405,7 @@ def process_input(
         cases=all_cases,
         output_df=output_df,
         standalone_case_count=standalone_case_count,
+        standalone_cases=standalone_cases,
     )
 
 
@@ -600,7 +604,10 @@ def main() -> None:
             return
 
         if args.validation_report:
-            save_validation_report(main_cases, Path(args.validation_report))
+            save_validation_report(
+                main_cases + processing_result.standalone_cases,
+                Path(args.validation_report),
+            )
 
         excel_handler.write_excel(
             output_df,

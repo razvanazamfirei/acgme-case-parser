@@ -103,7 +103,7 @@ def extract_vascular_access(
         # access: [VascularAccess.ARTERIAL_CATHETER,
         VascularAccess.CENTRAL_VENOUS_CATHETER]
     """
-    if notes is None or (isinstance(notes, float) and pd.isna(notes)):
+    if pd.isna(notes):
         return [], []
 
     text = str(notes)
