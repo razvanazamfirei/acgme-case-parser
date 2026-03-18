@@ -8,12 +8,10 @@ Behavioral assumption:
 from __future__ import annotations
 
 import logging
-import operator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import starmap
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 from openpyxl.utils import get_column_letter
@@ -26,6 +24,8 @@ from .models import (
     TECHNIQUE_RANK,
     ColumnMap,
 )
+from .types import Scalar
+from .utils import normalize_stem
 
 logger = logging.getLogger(__name__)
 _RESERVED_SHEET_NAMES = {"info", "_meta"}
@@ -33,7 +33,7 @@ _CASE_LEVEL_TECHNIQUE_MIN_RANK = 2
 DEFAULT_ORPHAN_AGE = 30
 
 
-def _combine_non_empty_text(*values: Any) -> str | None:
+def _combine_non_empty_text(*values: Scalar) -> str | None:
     """Join distinct non-empty text fields while preserving first-seen order."""
     parts: list[str] = []
     seen: set[str] = set()
@@ -48,28 +48,92 @@ def _combine_non_empty_text(*values: Any) -> str | None:
     return "\n".join(parts) if parts else None
 
 
-def _assemble_airway_detail(rank: int, comment: Any, details: Any) -> str | None:
+def _column_or_default(
+    df: DataFrame,
+    column_name: str,
+    default: str | None = None,
+) -> pd.Series | list[str | None]:
+    """Return a DataFrame column or one default value per row when absent."""
+    if column_name in df.columns:
+        return df[column_name]
+    return [default] * len(df)
+
+
+def _combine_text_columns(*columns: pd.Series | list[str | None]) -> list[str | None]:
+    """Combine row-aligned text columns with the shared distinct-text rules."""
+    return list(starmap(_combine_non_empty_text, zip(*columns, strict=False)))
+
+
+def _assemble_airway_detail(
+    rank: int,
+    comment: str | None,
+    details: str | None,
+) -> str | None:
     """Build case-level airway detail text only for sufficiently invasive techniques."""
     if rank < _CASE_LEVEL_TECHNIQUE_MIN_RANK:
         return None
     return _combine_non_empty_text(comment, details)
 
 
-def _assemble_orphan_procedure_notes(
-    procedure_name: Any,
-    comment: Any,
-    details: Any,
-    airway_type: Any,
-    airway_details: Any,
-) -> str | None:
-    """Preserve orphan technique/comment/detail text using matched-row formatting."""
-    return _combine_non_empty_text(
-        procedure_name,
-        comment,
-        airway_type,
-        airway_details,
-        details,
+def _extract_attending_column(df: DataFrame, column_name: str) -> pd.Series:
+    """Return normalized attending names when a source column is present."""
+    if column_name not in df.columns:
+        return pd.Series([pd.NA] * len(df), index=df.index)
+    return df[column_name].apply(extract_attending)
+
+
+def _empty_procedure_aggregate() -> DataFrame:
+    """Return the empty case/procedure aggregate schema."""
+    return pd.DataFrame(columns=["MPOG_Case_ID", "Airway_Type"])
+
+
+def _aggregate_case_procedures(matched_procs: DataFrame) -> DataFrame:
+    """Reduce matched ProcedureList rows to one primary procedure per case."""
+    if matched_procs.empty:
+        return _empty_procedure_aggregate()
+
+    ranked_columns = ["MPOG_Case_ID", "ProcedureName"]
+    if "Comment" in matched_procs.columns:
+        ranked_columns.append("Comment")
+    if "Details" in matched_procs.columns:
+        ranked_columns.append("Details")
+
+    ranked_procs = matched_procs.loc[
+        matched_procs["ProcedureName"].notna(),
+        ranked_columns,
+    ].copy()
+    if ranked_procs.empty:
+        return _empty_procedure_aggregate()
+
+    ranked_procs["_technique_rank"] = (
+        ranked_procs["ProcedureName"].map(TECHNIQUE_RANK).fillna(0)
     )
+    primary_procs = (
+        ranked_procs
+        .sort_values(
+            by=["MPOG_Case_ID", "_technique_rank"],
+            ascending=[True, False],
+            kind="stable",
+        )
+        .drop_duplicates(subset="MPOG_Case_ID", keep="first")
+        .reset_index(drop=True)
+    )
+    primary_procs["Airway_Type"] = primary_procs["ProcedureName"]
+    primary_procs["Airway_Details"] = list(
+        starmap(
+            _assemble_airway_detail,
+            zip(
+                primary_procs["_technique_rank"],
+                _column_or_default(primary_procs, "Comment"),
+                _column_or_default(primary_procs, "Details"),
+                strict=False,
+            ),
+        )
+    )
+    proc_agg_columns = ["MPOG_Case_ID", "Airway_Type"]
+    if primary_procs["Airway_Details"].notna().any():
+        proc_agg_columns.append("Airway_Details")
+    return primary_procs.loc[:, proc_agg_columns]
 
 
 @dataclass(frozen=True)
@@ -137,7 +201,7 @@ def read_excel(file_path: str | Path, sheet_name: str | int | None = 0) -> DataF
 class ExcelHandler:
     """Handles Excel file output operations."""
 
-    def __init__(self, max_width: int = 60):
+    def __init__(self, max_width: int = 60) -> None:
         """Initialize with maximum column width setting.
 
         Args:
@@ -310,13 +374,25 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     """
     directory = Path(directory)
 
-    case_files = {
-        f.name.replace(".CaseList.csv", ""): f for f in directory.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        f.name.replace(".ProcedureList.csv", ""): f
-        for f in directory.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for f in directory.glob("*.CaseList.csv"):
+        key = normalize_stem(f.name.replace(".CaseList.csv", ""))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from CaseList files: "
+                f"{case_files[key].name!r} and {f.name!r}"
+            )
+        case_files[key] = f
+
+    proc_files: dict[str, Path] = {}
+    for f in directory.glob("*.ProcedureList.csv"):
+        key = normalize_stem(f.name.replace(".ProcedureList.csv", ""))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from ProcedureList files: "
+                f"{proc_files[key].name!r} and {f.name!r}"
+            )
+        proc_files[key] = f
 
     common_prefixes = set(case_files.keys()) & set(proc_files.keys())
 
@@ -343,23 +419,7 @@ def discover_csv_pairs(directory: Path) -> list[tuple[Path, Path]]:
     return pairs
 
 
-def select_primary_technique(proc_group: pd.DataFrame) -> pd.Series:
-    """Select the primary (most invasive) anesthesia technique for one case.
-
-    Args:
-        proc_group: DataFrame of procedures for one MPOG_Case_ID
-
-    Returns:
-        Series with the highest-ranked technique as Airway_Type
-    """
-    techniques = proc_group["ProcedureName"].dropna()
-    if techniques.empty:
-        return pd.Series({"Airway_Type": None})
-    ranked = [(TECHNIQUE_RANK.get(t, 0), t) for t in techniques]
-    return pd.Series({"Airway_Type": max(ranked, key=operator.itemgetter(0))[1]})
-
-
-def join_case_and_procedures(  # noqa: PLR0912
+def join_case_and_procedures(
     case_df: DataFrame, proc_df: DataFrame
 ) -> tuple[DataFrame, DataFrame]:
     """Join case and procedure DataFrames, aggregating multiple procedures per case.
@@ -382,66 +442,9 @@ def join_case_and_procedures(  # noqa: PLR0912
                 "Found %d orphan procedure(s) with no matching case", len(orphan_procs)
             )
         matched_procs = proc_df[~orphan_mask]
-        if matched_procs.empty:
-            proc_agg = pd.DataFrame(columns=["MPOG_Case_ID", "Airway_Type"])
-        else:
-            ranked_columns = ["MPOG_Case_ID", "ProcedureName"]
-            if "Comment" in matched_procs.columns:
-                ranked_columns.append("Comment")
-            if "Details" in matched_procs.columns:
-                ranked_columns.append("Details")
-            ranked_procs = matched_procs.loc[
-                matched_procs["ProcedureName"].notna(),
-                ranked_columns,
-            ].copy()
-            if ranked_procs.empty:
-                proc_agg = pd.DataFrame(columns=["MPOG_Case_ID", "Airway_Type"])
-            else:
-                ranked_procs["_technique_rank"] = (
-                    ranked_procs["ProcedureName"].map(TECHNIQUE_RANK).fillna(0)
-                )
-                primary_procs = (
-                    ranked_procs
-                    .sort_values(
-                        by=["MPOG_Case_ID", "_technique_rank"],
-                        ascending=[True, False],
-                        kind="stable",
-                    )
-                    .drop_duplicates(subset="MPOG_Case_ID", keep="first")
-                    .reset_index(drop=True)
-                )
-                primary_procs["Airway_Type"] = primary_procs["ProcedureName"]
-                if (
-                    "Comment" in primary_procs.columns
-                    or "Details" in primary_procs.columns
-                ):
-                    comment_values = (
-                        primary_procs["Comment"]
-                        if "Comment" in primary_procs.columns
-                        else [None] * len(primary_procs)
-                    )
-                    detail_values = (
-                        primary_procs["Details"]
-                        if "Details" in primary_procs.columns
-                        else [None] * len(primary_procs)
-                    )
-                    primary_procs["Airway_Details"] = list(
-                        starmap(
-                            _assemble_airway_detail,
-                            zip(
-                                primary_procs["_technique_rank"],
-                                comment_values,
-                                detail_values,
-                                strict=False,
-                            ),
-                        )
-                    )
-                proc_agg_columns = ["MPOG_Case_ID", "Airway_Type"]
-                if "Airway_Details" in primary_procs.columns:
-                    proc_agg_columns.append("Airway_Details")
-                proc_agg = primary_procs.loc[:, proc_agg_columns]
+        proc_agg = _aggregate_case_procedures(matched_procs)
     else:
-        proc_agg = pd.DataFrame(columns=["MPOG_Case_ID", "Airway_Type"])
+        proc_agg = _empty_procedure_aggregate()
 
     result = case_df.merge(proc_agg, on="MPOG_Case_ID", how="left")
     if "Airway_Type" not in result.columns:
@@ -459,7 +462,7 @@ def join_case_and_procedures(  # noqa: PLR0912
 class CsvHandler:
     """Handles MPOG supervised-export CSV v2 format reading."""
 
-    def __init__(self, column_map: ColumnMap | None = None):
+    def __init__(self, column_map: ColumnMap | None = None) -> None:
         """Initialize with column mapping.
 
         Args:
@@ -539,30 +542,19 @@ class CsvHandler:
             }
         )
 
-        if "AnesAttendings" in csv_df.columns:
-            result[column_map.anesthesiologist] = csv_df["AnesAttendings"].apply(
-                extract_attending
-            )
+        result[column_map.anesthesiologist] = _extract_attending_column(
+            csv_df,
+            "AnesAttendings",
+        )
 
         # CSV v2 airway values carry both anesthesia signal and airway technique hints.
         # Preserve any technique-level note text from the matched ProcedureList row
         # so downstream airway/anesthesia inference can use more than the coarse
         # ProcedureName label.
         if "Airway_Type" in csv_df.columns:
-            airway_details = (
-                csv_df["Airway_Details"]
-                if "Airway_Details" in csv_df.columns
-                else [None] * len(csv_df)
-            )
-            result[column_map.procedure_notes] = list(
-                starmap(
-                    _combine_non_empty_text,
-                    zip(
-                        csv_df["Airway_Type"],
-                        airway_details,
-                        strict=False,
-                    ),
-                )
+            result[column_map.procedure_notes] = _combine_text_columns(
+                _column_or_default(csv_df, "Airway_Type"),
+                _column_or_default(csv_df, "Airway_Details"),
             )
 
         # CSV v2 has no Services column — derive from procedure text during processing.
@@ -621,51 +613,16 @@ class CsvHandler:
         result[column_map.procedure] = orphan_df.get("AIMS_Actual_Procedure_Text")
         result[column_map.services] = ""
 
-        procedure_names = (
-            orphan_df["ProcedureName"]
-            if "ProcedureName" in orphan_df.columns
-            else [None] * len(orphan_df)
-        )
-        comment_values = (
-            orphan_df["Comment"]
-            if "Comment" in orphan_df.columns
-            else [None] * len(orphan_df)
-        )
-        detail_values = (
-            orphan_df["Details"]
-            if "Details" in orphan_df.columns
-            else [None] * len(orphan_df)
-        )
-        airway_types = (
-            orphan_df["Airway_Type"]
-            if "Airway_Type" in orphan_df.columns
-            else [None] * len(orphan_df)
-        )
-        airway_details = (
-            orphan_df["Airway_Details"]
-            if "Airway_Details" in orphan_df.columns
-            else [None] * len(orphan_df)
-        )
-        result[column_map.procedure_notes] = list(
-            starmap(
-                _assemble_orphan_procedure_notes,
-                zip(
-                    procedure_names,
-                    comment_values,
-                    detail_values,
-                    airway_types,
-                    airway_details,
-                    strict=False,
-                ),
-            )
+        result[column_map.procedure_notes] = _combine_text_columns(
+            _column_or_default(orphan_df, "ProcedureName"),
+            _column_or_default(orphan_df, "Comment"),
+            _column_or_default(orphan_df, "Details"),
         )
 
-        if "AnesAttendingNames" in orphan_df.columns:
-            result[column_map.anesthesiologist] = orphan_df["AnesAttendingNames"].apply(
-                extract_attending
-            )
-        else:
-            result[column_map.anesthesiologist] = pd.NA
+        result[column_map.anesthesiologist] = _extract_attending_column(
+            orphan_df,
+            "AnesAttendingNames",
+        )
 
         result[column_map.age] = (
             DEFAULT_ORPHAN_AGE  # Maps orphan procedures to the adult 12-65 range.

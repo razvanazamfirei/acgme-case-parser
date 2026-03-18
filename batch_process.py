@@ -7,7 +7,7 @@
 #   "case-parser",
 # ]
 # ///
-"""Batch process all residents from Output-Supervised into individual Excel files."""
+"""Batch process all residents from Output-Supervised into Output folders."""
 
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ import hashlib
 import logging
 import os
 import sys
-import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +44,8 @@ from case_parser.models import (
     ColumnMap,
 )
 from case_parser.processor import CaseProcessor
+from case_parser.standalone_exports import iter_standalone_case_exports
+from case_parser.utils import format_name, normalize_stem
 
 # Suppress noisy logging from the pipeline
 logging.getLogger("case_parser").setLevel(logging.WARNING)
@@ -53,7 +54,6 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 _WORKER_PROCESSORS: dict[tuple[int, bool, ColumnMap], CaseProcessor] = {}
-_SKLEARN_DELAYED_WARNING_PATTERN = r".*sklearn\.utils\.parallel\.delayed.*"
 
 
 @dataclass(frozen=True)
@@ -62,15 +62,6 @@ class ProcessConfig:
     columns: ColumnMap
     excel_handler: ExcelHandler
     use_ml: bool
-
-
-def _suppress_sklearn_parallel_warning() -> None:
-    """Suppress noisy sklearn delayed/Parallel warning during batch runs."""
-    warnings.filterwarnings(
-        "ignore",
-        message=_SKLEARN_DELAYED_WARNING_PATTERN,
-        category=UserWarning,
-    )
 
 
 def _get_worker_processor(columns: ColumnMap, use_ml: bool) -> CaseProcessor:
@@ -93,63 +84,98 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
     Returns:
         Sorted list of ``(name, case_path, proc_path)`` tuples for residents
         that have both a CaseList and a ProcedureList file.
+
+    Raises:
+        ValueError: When multiple raw filenames normalize to the same key.
     """
-    case_files = {
-        f.name.replace(".Supervised.CaseList.csv", ""): f
-        for f in case_dir.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        f.name.replace(".Supervised.ProcedureList.csv", ""): f
-        for f in proc_dir.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for f in case_dir.glob("*.CaseList.csv"):
+        key = normalize_stem(f.name.removesuffix(".CaseList.csv"))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from CaseList files: "
+                f"{case_files[key].name!r} and {f.name!r}"
+            )
+        case_files[key] = f
+
+    proc_files: dict[str, Path] = {}
+    for f in proc_dir.glob("*.ProcedureList.csv"):
+        key = normalize_stem(f.name.removesuffix(".ProcedureList.csv"))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from ProcedureList files: "
+                f"{proc_files[key].name!r} and {f.name!r}"
+            )
+        proc_files[key] = f
+
     common = sorted(set(case_files) & set(proc_files))
     return [(name, case_files[name], proc_files[name]) for name in common]
 
 
-def format_name(name: str) -> str:
-    """Convert ``LAST_FIRST`` filename stem to ``First Last`` display name.
-
-    Args:
-        name: Filename stem in ``LAST_FIRST`` format (underscore-separated).
-
-    Returns:
-        Title-cased ``First Last`` string, or the original name title-cased
-        if no underscore separator is found.
-    """
-    parts = name.split("_", 1)
-    if len(parts) == 2:
-        return f"{parts[1].title()} {parts[0].title()}"
-    return name.title()
+def _resident_output_dir(base_output_dir: Path, resident_name: str) -> Path:
+    """Return the per-resident output folder, creating it when needed."""
+    resident_dir = base_output_dir / resident_name
+    resident_dir.mkdir(parents=True, exist_ok=True)
+    return resident_dir
 
 
-def process_resident(
-    pairs: tuple[str, Path, Path],
-    config: ProcessConfig,
-) -> tuple[int, tuple[str, int, str] | None]:
-    """Process one resident pair and write case-log and orphan outputs."""
-    name, case_file, proc_file = pairs
-    _suppress_sklearn_parallel_warning()
-    processor = _get_worker_processor(config.columns, config.use_ml)
-    formatted_name = format_name(name)
-    joined, orphans = join_case_and_procedures(
-        pd.read_csv(case_file),
-        pd.read_csv(proc_file),
-    )
-
-    orphan_notice: tuple[str, int, str] | None = None
-    if not orphans.empty:
-        orphan_cases = processor.process_dataframe(
-            CsvHandler(config.columns).normalize_orphan_columns(orphans)
-        )
-        config.excel_handler.write_excel(
-            processor.procedures_to_dataframe(orphan_cases),
-            config.output_dir / f"{formatted_name}_standalone.xlsx",
+def _write_standalone_exports(
+    *,
+    processor: CaseProcessor,
+    excel_handler: ExcelHandler,
+    output_dir: Path,
+    resident_name: str,
+    orphan_cases: list,
+) -> tuple[list[str], int]:
+    """Write the split standalone orphan exports for one resident."""
+    written_files: list[str] = []
+    written_case_count = 0
+    for spec, export_cases in iter_standalone_case_exports(orphan_cases):
+        if not export_cases:
+            continue
+        output_path = output_dir / f"{resident_name}_{spec.suffix}.xlsx"
+        excel_handler.write_excel(
+            processor.procedures_to_dataframe(export_cases),
+            output_path,
             options=ExcelWriteOptions(
                 format_type=FORMAT_TYPE_STANDALONE,
                 version=STANDALONE_OUTPUT_FORMAT_VERSION,
             ),
         )
-        orphan_notice = (name, len(orphans), f"{formatted_name}_standalone.xlsx")
+        written_files.append(output_path.name)
+        written_case_count += len(export_cases)
+    return written_files, written_case_count
+
+
+def process_resident(
+    pairs: tuple[str, Path, Path],
+    config: ProcessConfig,
+) -> tuple[int, tuple[str, int, list[str]] | None]:
+    """Process one resident pair and write case-log and orphan outputs."""
+    name, case_file, proc_file = pairs
+    processor = _get_worker_processor(config.columns, config.use_ml)
+    stable_name = name  # Stable key from find_resident_pairs
+    formatted_name = format_name(name)
+    resident_output_dir = _resident_output_dir(config.output_dir, stable_name)
+    joined, orphans = join_case_and_procedures(
+        pd.read_csv(case_file),
+        pd.read_csv(proc_file),
+    )
+
+    orphan_notice: tuple[str, int, list[str]] | None = None
+    if not orphans.empty:
+        orphan_cases = processor.process_dataframe(
+            CsvHandler(config.columns).normalize_orphan_columns(orphans)
+        )
+        written_files, written_case_count = _write_standalone_exports(
+            processor=processor,
+            excel_handler=config.excel_handler,
+            output_dir=resident_output_dir,
+            resident_name=stable_name,
+            orphan_cases=orphan_cases,
+        )
+        if written_files:
+            orphan_notice = (formatted_name, written_case_count, written_files)
 
     if joined.empty:
         return 0, orphan_notice
@@ -163,7 +189,7 @@ def process_resident(
 
     config.excel_handler.write_excel(
         processor.cases_to_dataframe(parsed_cases),
-        config.output_dir / f"{formatted_name}.xlsx",
+        resident_output_dir / f"{stable_name}_all_cases.xlsx",
         options=ExcelWriteOptions(
             fixed_widths={"Original Procedure": 12},
             format_type=FORMAT_TYPE_CASELOG,
@@ -186,8 +212,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("Output-Individual"),
-        help="Directory to write individual Excel files (default: Output-Individual)",
+        default=Path("Output"),
+        help=(
+            "Directory to write one folder per resident with individual Excel files "
+            "(default: Output)"
+        ),
     )
     parser.add_argument(
         "--workers",
@@ -242,11 +271,11 @@ def _process_in_parallel(
     pairs: list[tuple[str, Path, Path]],
     config: ProcessConfig,
     workers: int,
-) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, str]]]:
+) -> tuple[int, list[tuple[str, str]], list[tuple[str, int, list[str]]]]:
     """Process resident file pairs in parallel and collect summary results."""
     total_cases = 0
     errors: list[tuple[str, str]] = []
-    orphan_notices: list[tuple[str, int, str]] = []
+    orphan_notices: list[tuple[str, int, list[str]]] = []
     executor_cls = ProcessPoolExecutor if config.use_ml else ThreadPoolExecutor
 
     with Progress(
@@ -282,7 +311,6 @@ def _process_in_parallel(
 
 def main() -> None:
     """Run the batch resident-processing CLI."""
-    _suppress_sklearn_parallel_warning()
     args = _parse_args()
     output_dir: Path = args.output_dir
     case_dir, proc_dir = _validate_input_dirs(args.base_dir)
@@ -307,10 +335,10 @@ def main() -> None:
         pairs, config, args.workers
     )
 
-    for resident_id, orphan_count, standalone_name in orphan_notices:
+    for resident_id, orphan_count, standalone_names in orphan_notices:
         console.print(
             f"  [yellow]Note:[/yellow] {resident_id}: {orphan_count} orphan "
-            f"procedure(s) → {standalone_name}"
+            f"procedure(s) → {', '.join(standalone_names)}"
         )
 
     console.print(

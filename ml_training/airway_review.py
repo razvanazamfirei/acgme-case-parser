@@ -30,6 +30,7 @@ from case_parser.patterns.anesthesia_patterns import (
     MAC_WITHOUT_AIRWAY_PROCEDURE_KEYWORDS,
 )
 from case_parser.processor import CaseProcessor
+from case_parser.utils import normalize_stem
 
 console = Console()
 
@@ -199,14 +200,6 @@ def _build_case_key(source_file: str, case: ParsedCase) -> str:
             f"{hashlib.sha256(fallback_payload.encode('utf-8')).hexdigest()[:8]}"
         )
     return f"{source_file}:{case_id}:{procedure[:80]}"
-
-
-def _paired_file_stem(filename: str, *, suffixes: tuple[str, ...]) -> str:
-    """Strip the matching case/procedure CSV suffix from a paired export filename."""
-    for suffix in suffixes:
-        if filename.endswith(suffix):
-            return filename[: -len(suffix)]
-    return filename
 
 
 def _combined_case_text(case: ParsedCase) -> str:
@@ -604,20 +597,25 @@ def _discover_pair_paths(base_dir: Path) -> list[tuple[Path, Path]]:
             f"Expected {base_dir} to contain case-list/ and procedure-list/ subdirs"
         )
 
-    case_files = {
-        _paired_file_stem(
-            path.name,
-            suffixes=(".Supervised.CaseList.csv", ".CaseList.csv"),
-        ): path
-        for path in case_dir.glob("*.CaseList.csv")
-    }
-    proc_files = {
-        _paired_file_stem(
-            path.name,
-            suffixes=(".Supervised.ProcedureList.csv", ".ProcedureList.csv"),
-        ): path
-        for path in proc_dir.glob("*.ProcedureList.csv")
-    }
+    case_files: dict[str, Path] = {}
+    for path in case_dir.glob("*.CaseList.csv"):
+        key = normalize_stem(path.name.removesuffix(".CaseList.csv"))
+        if key in case_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from case-list files: "
+                f"{case_files[key].name!r} and {path.name!r}"
+            )
+        case_files[key] = path
+
+    proc_files: dict[str, Path] = {}
+    for path in proc_dir.glob("*.ProcedureList.csv"):
+        key = normalize_stem(path.name.removesuffix(".ProcedureList.csv"))
+        if key in proc_files:
+            raise ValueError(
+                f"Duplicate normalized key {key!r} from procedure-list files: "
+                f"{proc_files[key].name!r} and {path.name!r}"
+            )
+        proc_files[key] = path
     common = sorted(set(case_files) & set(proc_files))
     return [(case_files[name], proc_files[name]) for name in common]
 

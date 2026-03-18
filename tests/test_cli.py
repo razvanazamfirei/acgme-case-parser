@@ -12,11 +12,12 @@ import pandas as pd
 # noinspection PyProtectedMember
 from case_parser.cli import (
     _ProcessingOptions,
+    _ProcessingRequest,
     main,
-    process_csv,
+    process_input,
     split_standalone_cases,
 )
-from case_parser.domain import ParsedCase
+from case_parser.domain import ParsedCase, ProcedureCategory
 from case_parser.models import ColumnMap
 
 
@@ -29,6 +30,7 @@ def _standalone_case(  # noqa: PLR0913
     block: str | None = None,
     raw_block: str | None = None,
     unmatched_block_source: str | None = None,
+    procedure_category: ProcedureCategory = ProcedureCategory.OTHER,
 ) -> ParsedCase:
     return ParsedCase(
         raw_date="2025-01-01",
@@ -45,17 +47,22 @@ def _standalone_case(  # noqa: PLR0913
         raw_nerve_block_type=raw_block,
         unmatched_block_source=unmatched_block_source,
         case_date=date(2025, 1, 1),
+        procedure_category=procedure_category,
     )
 
 
 def test_split_standalone_cases_routes_blocks_and_neuraxial():
     cases = [
         _standalone_case(case_id="B1", procedure_name="Peripheral nerve block"),
-        _standalone_case(case_id="N1", procedure_name="Labor Epidural"),
-        _standalone_case(case_id="N2", procedure_name="CSE"),
+        _standalone_case(
+            case_id="N1",
+            procedure_name="Labor Epidural",
+            procedure="Labor epidural placement",
+        ),
+        _standalone_case(case_id="N2", procedure_name="CSE", procedure="CSE"),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B1"]
     assert [c.episode_id for c in neuraxial_cases] == ["N1", "N2"]
@@ -70,33 +77,34 @@ def test_split_standalone_cases_treats_block_site_only_as_block():
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B2"]
     assert neuraxial_cases == []
 
 
-def test_split_standalone_cases_defaults_unknown_to_neuraxial_bucket():
+def test_split_standalone_cases_excludes_unknown_non_ob_non_block_cases():
     cases = [
         _standalone_case(case_id="X1", procedure_name="Unknown Procedure"),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert block_cases == []
-    assert [c.episode_id for c in neuraxial_cases] == ["X1"]
+    assert neuraxial_cases == []
 
 
-def test_split_standalone_cases_routes_canonical_neuraxial_sites_correctly():
+def test_split_standalone_cases_routes_ob_category_without_keyword():
     cases = [
         _standalone_case(
             case_id="N3",
             procedure_name="Unknown Procedure",
-            block="Lumbar",
+            procedure="Delivery case",
+            procedure_category=ProcedureCategory.CESAREAN,
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert block_cases == []
     assert [c.episode_id for c in neuraxial_cases] == ["N3"]
@@ -111,7 +119,7 @@ def test_split_standalone_cases_uses_preserved_raw_block_text():
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B3"]
     assert neuraxial_cases == []
@@ -127,7 +135,7 @@ def test_split_standalone_cases_prefers_normalized_peripheral_block_over_text_hi
         ),
     ]
 
-    block_cases, neuraxial_cases = split_standalone_cases(cases)
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
 
     assert [c.episode_id for c in block_cases] == ["B4"]
     assert neuraxial_cases == []
@@ -157,22 +165,28 @@ def test_process_csv_returns_standalone_case_count(tmp_path: Path):
         ),
         patch("case_parser.cli._build_processor", return_value=processor),
         patch(
-            "case_parser.cli.split_standalone_cases",
-            return_value=([orphan_cases[0]], [orphan_cases[1]]),
+            "case_parser.cli.iter_standalone_case_exports",
+            return_value=(
+                (SimpleNamespace(suffix="blocks", label="Blocks"), [orphan_cases[0]]),
+                (SimpleNamespace(suffix="ob", label="OB"), [orphan_cases[1]]),
+            ),
         ),
         patch("case_parser.cli._write_standalone_output") as write_standalone,
     ):
-        all_cases, output_df, standalone_case_count = process_csv(
-            input_path=tmp_path,
-            output_path=tmp_path / "out.xlsx",
+        result = process_input(
+            request=_ProcessingRequest(
+                mode="csv_v2",
+                input_path=tmp_path,
+                output_path=tmp_path / "out.xlsx",
+                excel_handler=Mock(),
+            ),
             columns=columns,
-            excel_handler=Mock(),
             options=options,
         )
 
-    assert all_cases == []
-    assert output_df.empty
-    assert standalone_case_count == 2
+    assert result.cases == []
+    assert result.output_df.empty
+    assert result.standalone_case_count == 2
     assert write_standalone.call_count == 2
 
 
@@ -200,8 +214,12 @@ def test_main_uses_standalone_signal_when_no_main_cases(tmp_path: Path):
         patch("case_parser.cli.columns_from_args", return_value=ColumnMap()),
         patch("case_parser.cli.ExcelHandler", return_value=Mock()),
         patch(
-            "case_parser.cli.process_csv",
-            return_value=([], pd.DataFrame(), 2),
+            "case_parser.cli.process_input",
+            return_value=SimpleNamespace(
+                cases=[],
+                output_df=pd.DataFrame(),
+                standalone_case_count=2,
+            ),
         ),
         patch("case_parser.cli.console.print") as console_print,
     ):

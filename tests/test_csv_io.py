@@ -3,13 +3,14 @@
 import pandas as pd
 import pytest
 
+from case_parser.domain import ProcedureCategory
 from case_parser.io import (
     CsvHandler,
     discover_csv_pairs,
     join_case_and_procedures,
-    select_primary_technique,
 )
 from case_parser.models import ColumnMap
+from case_parser.processor import CaseProcessor
 
 
 def test_discover_csv_pairs_finds_matching_files(tmp_path):
@@ -282,24 +283,19 @@ def test_normalize_orphan_columns_maps_required_columns():
     assert result.loc[1, column_map.procedure_notes] == "Peripheral nerve block"
 
 
-def test_normalize_orphan_columns_preserves_comment_and_optional_airway_text():
+def test_normalize_orphan_columns_preserves_comment_and_detail_text():
     column_map = ColumnMap()
     orphan_df = pd.DataFrame({
         "MPOG_Case_ID": ["ORPHAN-3"],
         "ProcedureName": ["Intubation routine"],
         "Comment": ["Easy mask ventilation"],
         "Details": ["Left double lumen tube placed"],
-        "Airway_Type": ["Intubation routine"],
-        "Airway_Details": ["Video laryngoscopy"],
     })
 
     result = CsvHandler(column_map).normalize_orphan_columns(orphan_df)
 
     assert result.loc[0, column_map.procedure_notes] == (
-        "Intubation routine\n"
-        "Easy mask ventilation\n"
-        "Video laryngoscopy\n"
-        "Left double lumen tube placed"
+        "Intubation routine\nEasy mask ventilation\nLeft double lumen tube placed"
     )
 
 
@@ -342,30 +338,47 @@ def test_normalize_orphan_columns_defaults_age_for_orphans():
     assert pd.isna(result.loc[0, column_map.asa])
 
 
-# --- select_primary_technique ---
+def test_orphan_csv_rows_flow_through_standalone_processing():
+    """Standalone orphan rows should retain neuraxial and block resolution."""
+    column_map = ColumnMap()
+    orphan_df = _make_full_proc_df(
+        (
+            "ORPHAN-1",
+            "2024-03-01 08:00",
+            2,
+            0,
+            "Labor Epidural",
+            pd.NA,
+            pd.NA,
+            "L&D Labor Epidural",
+            pd.NA,
+            "SMITH, JANE",
+        ),
+        (
+            "ORPHAN-2",
+            "2024-03-02 09:00",
+            2,
+            0,
+            "Peripheral nerve block",
+            "brachial plexus",
+            pd.NA,
+            pd.NA,
+            "SHOULDER ARTHROSCOPY",
+            "DOE, JOHN",
+        ),
+    )
 
+    normalized_orphans = CsvHandler(column_map).normalize_orphan_columns(orphan_df)
+    processor = CaseProcessor(column_map, default_year=2025, use_ml=False)
 
-def test_select_primary_technique_empty_procedures():
-    """All-NaN ProcedureName column returns Airway_Type=None."""
-    df = pd.DataFrame({"ProcedureName": [pd.NA, pd.NA]})
-    result = select_primary_technique(df)
-    assert result["Airway_Type"] is None
+    cases = processor.process_dataframe(normalized_orphans)
 
-
-def test_select_primary_technique_unknown_rank():
-    """Unknown technique gets rank 0; known technique with higher rank wins."""
-    df = pd.DataFrame({"ProcedureName": ["Unknown Technique", "LMA"]})
-    result = select_primary_technique(df)
-    # LMA has rank 2, "Unknown Technique" has rank 0 → LMA wins
-    assert result["Airway_Type"] == "LMA"
-
-
-def test_select_primary_technique_tie_is_deterministic():
-    """Two techniques with the same rank return a stable result."""
-    df = pd.DataFrame({"ProcedureName": ["Unknown A", "Unknown B"]})
-    result1 = select_primary_technique(df)
-    result2 = select_primary_technique(df)
-    assert result1["Airway_Type"] == result2["Airway_Type"]
+    assert [case.procedure_category for case in cases] == [
+        ProcedureCategory.VAGINAL_DELIVERY,
+        ProcedureCategory.OTHER,
+    ]
+    assert cases[0].raw_anesthesia_type == "Labor Epidural"
+    assert cases[1].nerve_block_type == "Interscalene"
 
 
 def test_normalize_columns_fills_missing_optional_columns():

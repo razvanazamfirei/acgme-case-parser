@@ -43,7 +43,7 @@ from .patterns.block_site_patterns import (
     PERIPHERAL_BLOCK_SITE_TERMS,
     normalize_block_site_terms,
 )
-from .patterns.categorization import categorize_procedure
+from .types import Scalar
 
 logger = logging.getLogger(__name__)
 _CANONICAL_BLOCK_SITE_TERMS = {
@@ -105,11 +105,19 @@ class _ParsedRowMetadata:
     age_category: AgeCategory | None
     asa_str: str
     emergent: bool
-    raw_asa: Any
+    raw_asa: object
     anesthesia_type: AnesthesiaType | None
     services: list[str]
     procedure_category: ProcedureCategory
-    procedure_text: Any
+    procedure_text: object
+
+
+@dataclass(frozen=True)
+class _CategorizationInput:
+    """Normalized categorization payload passed into the classifier."""
+
+    text: str
+    services: tuple[str, ...]
 
 
 @dataclass
@@ -142,7 +150,7 @@ class CaseProcessor:
         default_year: int = 2025,
         use_ml: bool = True,
         ml_threshold: float = DEFAULT_ML_THRESHOLD,
-    ):
+    ) -> None:
         """Initialize the processor with column mapping and default year.
 
         Args:
@@ -175,7 +183,7 @@ class CaseProcessor:
             return timestamp.replace(tzinfo=UTC)
         return timestamp.astimezone(UTC)
 
-    def parse_date(self, value: Any) -> tuple[datetime, list[str]]:
+    def parse_date(self, value: Scalar) -> tuple[datetime, list[str]]:
         """Parse date with fallback to default year.
 
         Args:
@@ -186,32 +194,10 @@ class CaseProcessor:
             Tuple of (parsed_datetime, warnings_list) where parsed_datetime is
             timezone-aware and warnings_list is empty on success.
         """
-        warnings = []
-
-        if pd.isna(value):
-            warnings.append(
-                f"Missing date value, using default year {self.default_year}"
-            )
-            return self._default_timestamp, warnings
-
-        # Try standard parsing first
-        timestamp = pd.to_datetime(value, errors="coerce")
-        if pd.notna(timestamp):
-            return self._normalize_timestamp_to_utc(timestamp), warnings
-
-        # Try specific format
-        timestamp = pd.to_datetime(str(value), format="%m/%d/%Y", errors="coerce")
-        if pd.notna(timestamp):
-            return self._normalize_timestamp_to_utc(timestamp), warnings
-
-        # Fallback to default
-        warnings.append(
-            f"Could not parse date '{value}', using default year {self.default_year}"
-        )
-        return self._default_timestamp, warnings
+        return self._prepare_dates([value])[0]
 
     @staticmethod
-    def determine_age_category(age: Any) -> tuple[AgeCategory | None, list[str]]:
+    def determine_age_category(age: Scalar) -> tuple[AgeCategory | None, list[str]]:
         """Categorize age using structured age ranges.
 
         Args:
@@ -255,7 +241,7 @@ class CaseProcessor:
 
     @staticmethod
     def map_anesthesia_type(
-        anesthesia_input: Any,
+        anesthesia_input: Scalar,
     ) -> tuple[AnesthesiaType | None, list[str]]:
         """Map anesthesia description to standardized type.
 
@@ -299,32 +285,40 @@ class CaseProcessor:
         warnings.append(f"Unrecognized anesthesia type: {anesthesia_input}")
         return None, warnings
 
-    def determine_procedure_category(
-        self, procedure: Any, services: list[str]
-    ) -> tuple[ProcedureCategory, list[str]]:
-        """Determine procedure category using hybrid classification.
+    def _classify_categorization_inputs(
+        self,
+        categorization_inputs: list[_CategorizationInput],
+    ) -> list[tuple[ProcedureCategory, list[str]]]:
+        """Classify normalized categorization payloads through one shared path."""
+        if not categorization_inputs:
+            return []
 
-        Uses the configured HybridClassifier (rules + optional ML) so
-        ``use_ml`` and ``ml_threshold`` affect categorization behavior.
-        Falls back to rule-based ``categorize_procedure`` if hybrid output is
-        unavailable or malformed.
+        procedure_texts = [item.text for item in categorization_inputs]
+        services_list = [list(item.services) for item in categorization_inputs]
+        if len(categorization_inputs) == 1:
+            classifications = [
+                self.classifier.classify(procedure_texts[0], services_list[0])
+            ]
+        else:
+            classifications = self.classifier.classify_many(
+                procedure_texts,
+                services_list,
+            )
 
-        Args:
-            procedure: Procedure description text (may be None or NaN).
-            services: List of service strings from the input row.
-
-        Returns:
-            Tuple of (procedure_category, warnings_list).
-        """
-        procedure_text = "" if pd.isna(procedure) else str(procedure)
-        hybrid_result = self.classifier.classify(procedure_text, services)
-        category = hybrid_result.get("category")
-        if category is None:
-            return categorize_procedure(procedure, services)
-        return category, hybrid_result.get("warnings", [])
+        classified_categories: list[tuple[ProcedureCategory, list[str]]] = []
+        for _categorization_input, classification in zip(
+            categorization_inputs,
+            classifications,
+            strict=True,
+        ):
+            classified_categories.append((
+                classification["category"],
+                list(classification.get("warnings", [])),
+            ))
+        return classified_categories
 
     @staticmethod
-    def normalize_emergent_flag(value: Any) -> bool:
+    def normalize_emergent_flag(value: Scalar) -> bool:
         """Convert various emergent flag formats to boolean.
 
         Args:
@@ -342,9 +336,9 @@ class CaseProcessor:
     def _infer_anesthesia_type(  # noqa: PLR0911
         anesthesia_type: AnesthesiaType | None,
         airway_mgmt: list,
-        procedure_text: Any,
+        procedure_text: Scalar,
         procedure_category: ProcedureCategory,
-        notes: Any,
+        notes: Scalar,
     ) -> tuple[AnesthesiaType | None, list[str]]:
         """Infer anesthesia type from context clues when not directly mapped.
 
@@ -405,7 +399,7 @@ class CaseProcessor:
 
     @staticmethod
     def _calculate_confidence(
-        confidence_scores: list[float], notes: Any
+        confidence_scores: list[float], notes: Scalar
     ) -> tuple[float, list[str]]:
         """Calculate overall extraction confidence from per-finding scores.
 
@@ -437,21 +431,21 @@ class CaseProcessor:
         confidence_scores.extend(f.confidence for f in new_findings)
 
     @staticmethod
-    def _split_services(raw_services: Any) -> list[str]:
+    def _split_services(raw_services: Scalar) -> list[str]:
         """Split a multiline services field into normalized items."""
         if pd.isna(raw_services):
             return []
         return [item.strip() for item in str(raw_services).split("\n") if item.strip()]
 
     @staticmethod
-    def _optional_str(value: Any) -> str | None:
+    def _optional_str(value: object) -> str | None:
         """Convert non-null values to string and preserve nulls as None."""
         if pd.isna(value):
             return None
         return str(value)
 
     @staticmethod
-    def _trimmed_optional_str(value: Any, max_length: int) -> str | None:
+    def _trimmed_optional_str(value: Scalar, max_length: int) -> str | None:
         """Convert to string and trim to max_length, preserving nulls."""
         optional_value = CaseProcessor._optional_str(value)
         if optional_value is None:
@@ -459,7 +453,7 @@ class CaseProcessor:
         return optional_value[:max_length]
 
     @staticmethod
-    def _optional_float(value: Any) -> float | None:
+    def _optional_float(value: Scalar) -> float | None:
         """Convert non-null values to float, preserving nulls."""
         if pd.isna(value):
             return None
@@ -469,7 +463,7 @@ class CaseProcessor:
             return None
 
     @staticmethod
-    def _clean_provider_name(value: Any) -> str | None:
+    def _clean_provider_name(value: Scalar) -> str | None:
         """Normalize provider names when present."""
         if pd.isna(value):
             return None
@@ -477,13 +471,48 @@ class CaseProcessor:
 
     @staticmethod
     def _normalize_nerve_block_type(
-        value: Any, procedure_name: Any, procedure_notes: Any
+        value: Scalar,
+        procedure_name: Scalar,
+        procedure_notes: Scalar,
+        case_procedure: Scalar,
     ) -> str | None:
         """Normalize optional nerve-block text to canonical site term(s)."""
         return normalize_block_site_terms(
             CaseProcessor._optional_str(value),
             procedure_name=CaseProcessor._optional_str(procedure_name),
             procedure_notes=CaseProcessor._optional_str(procedure_notes),
+            case_procedure=CaseProcessor._optional_str(case_procedure),
+        )
+
+    @staticmethod
+    def _build_categorization_input(
+        procedure: Scalar,
+        anesthesia_input: Scalar,
+        procedure_notes: Scalar,
+        services: list[str],
+    ) -> _CategorizationInput:
+        """Build the normalized classifier payload from row-level source fields."""
+        fallback_parts: list[str] = []
+        for value in (procedure, anesthesia_input, procedure_notes):
+            text = CaseProcessor._optional_str(value)
+            if text and text not in fallback_parts:
+                fallback_parts.append(text)
+        return _CategorizationInput(
+            text="\n".join(fallback_parts),
+            services=tuple(services),
+        )
+
+    def _build_categorization_input_from_row(
+        self,
+        row: Mapping[Hashable, Any],
+        services: list[str],
+    ) -> _CategorizationInput:
+        """Project a raw input row into the classifier-specific payload."""
+        return self._build_categorization_input(
+            row.get(self.column_map.procedure),
+            row.get(self.column_map.final_anesthesia_type),
+            row.get(self.column_map.procedure_notes),
+            services,
         )
 
     @staticmethod
@@ -554,7 +583,8 @@ class CaseProcessor:
         )
         all_warnings.extend(age_warnings)
 
-        asa_str, emergent, raw_asa = self.get_asa(all_warnings, row)
+        asa_str, emergent, raw_asa, asa_warnings = self._parse_asa_fields(row)
+        all_warnings.extend(asa_warnings)
         anesthesia_type, anesthesia_warnings = self.map_anesthesia_type(
             row.get(self.column_map.final_anesthesia_type)
         )
@@ -569,7 +599,9 @@ class CaseProcessor:
         procedure_category, proc_warnings = (
             (prepared.procedure_category, prepared.procedure_warnings)
             if prepared is not None
-            else self.determine_procedure_category(procedure_text, services)
+            else self._classify_categorization_inputs([
+                self._build_categorization_input_from_row(row, services)
+            ])[0]
         )
         all_warnings.extend(proc_warnings)
 
@@ -587,7 +619,7 @@ class CaseProcessor:
 
     def _extract_case_data(
         self,
-        notes: Any,
+        notes: Scalar,
         metadata: _ParsedRowMetadata,
         all_warnings: list[str],
         all_findings: list[Any],
@@ -671,6 +703,7 @@ class CaseProcessor:
                 raw_nerve_block_type,
                 row.get(self.column_map.final_anesthesia_type),
                 notes,
+                metadata.procedure_text,
             )
 
             return ParsedCase(
@@ -712,40 +745,21 @@ class CaseProcessor:
             logger.exception("Error processing row: %s", e)
             return self._build_error_case(f"Failed to process row: {e!s}")
 
-    def get_asa(
-        self, all_warnings: list[str], row: Mapping[Hashable, Any]
-    ) -> tuple[str, bool, Any]:
-        """Return ASA text, normalized emergent flag, and original ASA value."""
+    def _parse_asa_fields(
+        self,
+        row: Mapping[Hashable, Any],
+    ) -> tuple[str, bool, Any, list[str]]:
+        """Return normalized ASA data and any warnings."""
         # Handle ASA with emergent flag
+        warnings: list[str] = []
         raw_asa = row.get(self.column_map.asa)
         asa_str = "" if pd.isna(raw_asa) else str(raw_asa)
         emergent = self.normalize_emergent_flag(row.get(self.column_map.emergent))
 
         if emergent and "E" not in asa_str.upper():
             asa_str = f"{asa_str}E" if asa_str else "E"
-            all_warnings.append("Added 'E' to ASA status based on emergent flag")
-        return asa_str, emergent, raw_asa
-
-    def _process_row_safe(
-        self,
-        idx: Any,
-        row: Mapping[Hashable, Any],
-        prepared: _PreparedRow | None = None,
-    ) -> ParsedCase:
-        """Process a single row, returning an error case on failure.
-
-        Args:
-            idx: Row index used in the error log message.
-            row: A single row from the input DataFrame.
-
-        Returns:
-            ParsedCase on success, or a minimal error case if processing raises.
-        """
-        try:
-            return self.process_row(row, prepared=prepared)
-        except Exception as e:
-            logger.exception("Error processing row %d: %s", idx, e)
-            return self._build_error_case(f"Failed to process row: {e!s}")
+            warnings.append("Added 'E' to ASA status based on emergent flag")
+        return asa_str, emergent, raw_asa, warnings
 
     def _prepare_rows(
         self, rows: Sequence[Mapping[Hashable, Any]]
@@ -762,28 +776,34 @@ class CaseProcessor:
         services_list = [
             self._split_services(row.get(self.column_map.services)) for row in rows
         ]
-        procedure_texts = [
-            ""
-            if pd.isna(row.get(self.column_map.procedure))
-            else str(row.get(self.column_map.procedure))
-            for row in rows
-        ]
-        classifications = self.classifier.classify_many(procedure_texts, services_list)
-        return [
-            _PreparedRow(
-                timestamp=timestamp,
-                date_warnings=date_warnings,
-                services=services,
-                procedure_category=classification["category"],
-                procedure_warnings=list(classification.get("warnings", [])),
+        categorization_inputs = list(
+            starmap(
+                self._build_categorization_input_from_row,
+                zip(rows, services_list, strict=True),
             )
-            for (timestamp, date_warnings), services, classification in zip(
-                date_preparations,
-                services_list,
-                classifications,
-                strict=True,
+        )
+        classifications = self._classify_categorization_inputs(categorization_inputs)
+        prepared_rows: list[_PreparedRow] = []
+        for (
+            (timestamp, date_warnings),
+            services,
+            (procedure_category, procedure_warnings),
+        ) in zip(
+            date_preparations,
+            services_list,
+            classifications,
+            strict=True,
+        ):
+            prepared_rows.append(
+                _PreparedRow(
+                    timestamp=timestamp,
+                    date_warnings=date_warnings,
+                    services=services,
+                    procedure_category=procedure_category,
+                    procedure_warnings=procedure_warnings,
+                )
             )
-        ]
+        return prepared_rows
 
     def _prepare_dates(self, values: list[Any]) -> list[tuple[datetime, list[str]]]:
         """Parse many dates at once while preserving row-level warnings.
@@ -968,19 +988,14 @@ class CaseProcessor:
             prepared_rows = [None for _ in rows]
         processed_cases: list[ParsedCase] = []
         if workers == 1:
-            indexed_rows = zip(
-                range(len(rows)),
-                rows,
-                prepared_rows,
-                strict=False,
+            processed_cases = list(
+                starmap(self.process_row, zip(rows, prepared_rows, strict=False))
             )
-            processed_cases = list(starmap(self._process_row_safe, indexed_rows))
         else:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 processed_cases = list(
                     executor.map(
-                        self._process_row_safe,
-                        range(len(rows)),
+                        self.process_row,
                         rows,
                         prepared_rows,
                     )

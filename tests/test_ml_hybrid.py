@@ -167,3 +167,31 @@ def test_ml_rules_agree_preserves_actual_ml_confidence():
 
     assert result["method"] == "ml_rules_agree"
     assert result["confidence"] == pytest.approx(0.72)
+
+
+def test_medium_confidence_ml_other_does_not_override_specific_rules():
+    classifier = HybridClassifier(
+        ml_predictor=_StubPredictor(
+            prediction=ProcedureCategory.OTHER.value,
+            confidence=0.72,
+        ),
+        ml_threshold=0.7,
+    )
+
+    result = classifier._classify_with_rule_context(
+        _RuleContext(
+            procedure_text="L&D Labor Epidural",
+            services=[],
+            category=ProcedureCategory.VAGINAL_DELIVERY,
+            warnings=[],
+        ),
+        ml_category_str=ProcedureCategory.OTHER.value,
+        ml_confidence=0.72,
+    )
+
+    assert result["category"] == ProcedureCategory.VAGINAL_DELIVERY
+    assert result["method"] == "rules"
+    assert result["alternative"] == ProcedureCategory.OTHER
+    assert result["warnings"] == [
+        "Retained specific rule result over medium-confidence ML Other (conf=0.72)"
+    ]

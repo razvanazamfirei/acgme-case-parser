@@ -7,12 +7,11 @@ name = "case-parser"
 version = "0.2.0"
 description = "A tool for processing anesthesia case data from Excel files and converting it to standardized case log format"
 readme = "README.md"
-license = { text = "Apache License 2.0" }
+license = "Apache-2.0"
 authors = [ { name = "Razvan Azamfirei", email = "razvan@azamfirei.dev" } ]
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
@@ -32,13 +31,11 @@ dev = [
   "pandas-stubs~=3.0.0",
   "pytest>=9.0.2",
   "pytest-cov>=6.1.1",
-  "ruff>=0.15.4",
+  "ruff>=0.15.5",
   "scipy-stubs>=1.17",
-  "ty>=0.0.20",
-  "types-pytz>=2025.2.0.20251108",
-]
-ml = [
-  "textual>=8.0.1",
+  "textual>=8.0.2",
+  "ty>=0.0.21",
+  "types-pytz>=2026.1.1.20260304",
 ]
 
 [tool.hatch]
@@ -47,8 +44,16 @@ build.targets.wheel.packages = [ "src/case_parser" ]
 [tool.uv]
 default-groups = "all"
 
-[tool.pytest.ini_options]
-addopts = "--cov=case_parser --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=junit.xml -o junit_family=legacy"
+[tool.pytest]
+minversion = "9.0"
+addopts = [
+  "--cov=case_parser",
+  "--cov-report=term-missing",
+  "--cov-report=xml:coverage.xml",
+  "--junitxml=junit.xml",
+  "-o",
+  "junit_family=legacy",
+]
 testpaths = [ "tests" ]
 
 [tool.coverage.run]
@@ -63,4 +68,4 @@ skip_covered = true
 output = "coverage.xml"
 
 [tool.ty]
-environment.python-version = "3.12"
+environment.python-version = "3.13"

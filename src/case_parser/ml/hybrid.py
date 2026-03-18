@@ -8,9 +8,13 @@ from pathlib import Path
 from typing import Protocol, TypedDict
 
 from ..domain import ProcedureCategory
-from ..patterns.categorization import categorize_procedure, categorize_procedures
+from ..patterns.categorization import categorize_procedures
 from .config import DEFAULT_ML_THRESHOLD
 from .predictor import MLPredictor
+
+SERVICE_LIST_LENGTH_MISMATCH_MSG = (
+    "services_list must match procedure_texts length in classify_many"
+)
 
 
 class MLPredictorLike(Protocol):
@@ -71,7 +75,7 @@ class HybridClassifier:
         self,
         ml_predictor: MLPredictorLike | None,
         ml_threshold: float = DEFAULT_ML_THRESHOLD,
-    ):
+    ) -> None:
         """Initialize hybrid classifier.
 
         Args:
@@ -120,18 +124,9 @@ class HybridClassifier:
         Returns:
             ClassificationResult with category, method, confidence, etc.
         """
-        rule_category, rule_warnings = categorize_procedure(
-            procedure=procedure_text,
-            services=services or [],
-        )
-        return self._classify_with_rule_context(
-            _RuleContext(
-                procedure_text=procedure_text,
-                services=services or [],
-                category=rule_category,
-                warnings=rule_warnings,
-            )
-        )
+        return self._classify_rule_contexts(
+            self._build_rule_contexts([procedure_text], [services or []])
+        )[0]
 
     def classify_many(
         self,
@@ -139,37 +134,81 @@ class HybridClassifier:
         services_list: list[list[str]] | None = None,
     ) -> list[ClassificationResult]:
         """Classify multiple procedures in one batch."""
-        if not procedure_texts:
-            return []
+        return self._classify_rule_contexts(
+            self._build_rule_contexts(
+                procedure_texts,
+                self._normalize_service_rows(procedure_texts, services_list),
+            )
+        )
+
+    @staticmethod
+    def _normalize_service_rows(
+        procedure_texts: list[str],
+        services_list: list[list[str]] | None,
+    ) -> list[list[str]]:
+        """Normalize optional service metadata to one row per procedure."""
         if services_list is None:
-            service_rows = [[] for _ in procedure_texts]
-        else:
-            if len(services_list) != len(procedure_texts):
-                raise ValueError(
-                    "services_list must match procedure_texts length in classify_many"
-                )
-            service_rows = services_list
-        rule_results = categorize_procedures(procedure_texts, service_rows)
+            return [[] for _ in procedure_texts]
+        if len(services_list) != len(procedure_texts):
+            raise ValueError(SERVICE_LIST_LENGTH_MISMATCH_MSG)
+        return services_list
+
+    @staticmethod
+    def _build_rule_contexts(
+        procedure_texts: list[str],
+        services_list: list[list[str]],
+    ) -> list[_RuleContext]:
+        """Build rule contexts once for shared single/batch classification."""
+        rule_results = categorize_procedures(procedure_texts, services_list)
+        return [
+            _RuleContext(
+                procedure_text=procedure_text,
+                services=services,
+                category=rule_category,
+                warnings=rule_warnings,
+            )
+            for procedure_text, services, (rule_category, rule_warnings) in zip(
+                procedure_texts,
+                services_list,
+                rule_results,
+                strict=True,
+            )
+        ]
+
+    def _classify_rule_contexts(
+        self,
+        rule_contexts: list[_RuleContext],
+    ) -> list[ClassificationResult]:
+        """Classify one or many rule contexts through a single implementation."""
+        if not rule_contexts:
+            return []
 
         if self.ml_predictor is None:
             return [
                 ClassificationResult(
-                    category=rule_category,
+                    category=rule_context.category,
                     method="rules",
-                    confidence=0.8 if rule_warnings else 1.0,
+                    confidence=0.8 if rule_context.warnings else 1.0,
                     alternative=None,
-                    warnings=rule_warnings,
+                    warnings=rule_context.warnings,
                 )
-                for rule_category, rule_warnings in rule_results
+                for rule_context in rule_contexts
             ]
 
+        if len(rule_contexts) == 1:
+            return [self._classify_with_rule_context(rule_contexts[0])]
+
         ml_predictions, ml_confidences = self.ml_predictor.predict_with_confidence_many(
-            procedure_texts,
-            services_list=service_rows,
-            rule_categories=[category.value for category, _ in rule_results],
-            rule_warning_counts=[len(warnings) for _, warnings in rule_results],
+            [rule_context.procedure_text for rule_context in rule_contexts],
+            services_list=[rule_context.services for rule_context in rule_contexts],
+            rule_categories=[
+                rule_context.category.value for rule_context in rule_contexts
+            ],
+            rule_warning_counts=[
+                len(rule_context.warnings) for rule_context in rule_contexts
+            ],
         )
-        procedure_count = len(procedure_texts)
+        procedure_count = len(rule_contexts)
         if (
             len(ml_predictions) != procedure_count
             or len(ml_confidences) != procedure_count
@@ -182,35 +221,19 @@ class HybridClassifier:
                 f"procedures={procedure_count}"
             )
 
-        results: list[ClassificationResult] = []
-        for (
-            procedure_text,
-            services,
-            (rule_category, rule_warnings),
-            ml_prediction,
-            ml_confidence,
-        ) in zip(
-            procedure_texts,
-            service_rows,
-            rule_results,
-            ml_predictions,
-            ml_confidences,
-            strict=True,
-        ):
-            results.append(
-                self._classify_with_rule_context(
-                    _RuleContext(
-                        procedure_text=procedure_text,
-                        services=services,
-                        category=rule_category,
-                        warnings=rule_warnings,
-                    ),
-                    ml_category_str=str(ml_prediction),
-                    ml_confidence=float(ml_confidence),
-                )
+        return [
+            self._classify_with_rule_context(
+                rule_context,
+                ml_category_str=str(ml_prediction),
+                ml_confidence=float(ml_confidence),
             )
-
-        return results
+            for rule_context, ml_prediction, ml_confidence in zip(
+                rule_contexts,
+                ml_predictions,
+                ml_confidences,
+                strict=True,
+            )
+        ]
 
     def _classify_with_rule_context(  # noqa: PLR0911
         self,
@@ -288,6 +311,24 @@ class HybridClassifier:
                 method="ml_fill_other",
                 confidence=ml_confidence,
                 alternative=rule_category,
+                warnings=warnings,
+            )
+
+        if (
+            ml_confidence >= self.ml_threshold
+            and ml_category == ProcedureCategory.OTHER
+            and rule_category != ProcedureCategory.OTHER
+        ):
+            warnings = rule_warnings.copy()
+            warnings.append(
+                "Retained specific rule result over medium-confidence "
+                f"ML Other (conf={ml_confidence:.2f})"
+            )
+            return ClassificationResult(
+                category=rule_category,
+                method="rules",
+                confidence=0.8 if rule_warnings else 1.0,
+                alternative=ml_category,
                 warnings=warnings,
             )
 

@@ -14,12 +14,21 @@ def test_maps_multiple_peripheral_terms_in_canonical_order():
     assert normalize_block_site_terms(value) == "Femoral; Popliteal; Sciatic"
 
 
-def test_maps_unknown_peripheral_context_to_other():
+def test_maps_generic_brachial_plexus_to_predefined_site():
     result = normalize_block_site_terms(
         "Brachial plexus block",
         procedure_name="Peripheral nerve block",
     )
-    assert result == "Other - peripheral nerve blockade site"
+    assert result == "Supraclavicular"
+
+
+def test_uses_case_procedure_to_disambiguate_brachial_plexus():
+    result = normalize_block_site_terms(
+        "Brachial plexus block",
+        procedure_name="Peripheral nerve block",
+        case_procedure="Shoulder arthroscopy with rotator cuff repair",
+    )
+    assert result == "Interscalene"
 
 
 def test_maps_neuraxial_lumbar_from_spinal_default():

@@ -8,6 +8,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from numpy.typing import NDArray
+from sklearn.base import BaseEstimator
+from sklearn.pipeline import Pipeline
+
+from ..types import Scalar
 from .config import get_default_ml_inference_jobs, normalize_ml_inference_jobs
 from .inputs import FeatureInput, build_feature_inputs
 
@@ -15,7 +21,11 @@ from .inputs import FeatureInput, build_feature_inputs
 class ProcedureMLPipeline:
     """Inference pipeline that combines feature extraction and estimator."""
 
-    def __init__(self, model: Any, features: Any):
+    def __init__(
+        self,
+        model: BaseEstimator,
+        features: BaseEstimator,
+    ) -> None:
         """Initialize the pipeline with a fitted estimator and feature extractor.
 
         Args:
@@ -28,13 +38,24 @@ class ProcedureMLPipeline:
         self.classes_ = getattr(model, "classes_", [])
 
     @staticmethod
-    def _coerce_inputs(procedures: Iterable[Any] | Any) -> list[Any]:
+    def _coerce_inputs(
+        procedures: Iterable[str | FeatureInput | Mapping[str, Scalar]]
+        | str
+        | FeatureInput
+        | Mapping[str, Scalar],
+    ) -> list[str | FeatureInput | Mapping[str, Scalar]]:
         """Normalize supported single-item or iterable inputs to a list."""
         if isinstance(procedures, (str, Mapping, FeatureInput)):
             return [procedures]
         return list(procedures)
 
-    def predict(self, procedures: Iterable[Any] | Any) -> Any:
+    def predict(
+        self,
+        procedures: Iterable[str | FeatureInput | Mapping[str, Scalar]]
+        | str
+        | FeatureInput
+        | Mapping[str, Scalar],
+    ) -> np.ndarray[Any, Any]:
         """Predict categories for one or more procedure inputs.
 
         Args:
@@ -49,7 +70,13 @@ class ProcedureMLPipeline:
         feature_matrix = self.features.transform(texts)
         return self.model.predict(feature_matrix)
 
-    def predict_proba(self, procedures: Iterable[Any] | Any) -> Any:
+    def predict_proba(
+        self,
+        procedures: Iterable[str | FeatureInput | Mapping[str, Scalar]]
+        | str
+        | FeatureInput
+        | Mapping[str, Scalar],
+    ) -> np.ndarray[Any, Any]:
         """Return class probabilities for one or more procedure inputs.
 
         Args:
@@ -68,7 +95,12 @@ class ProcedureMLPipeline:
 class MLPredictor:
     """Wrapper for trained ML model."""
 
-    def __init__(self, pipeline: Any, metadata: dict, inference_jobs: int):
+    def __init__(
+        self,
+        pipeline: Pipeline,
+        metadata: dict[str, str | int | float | list[str]],
+        inference_jobs: int,
+    ) -> None:
         """Initialize predictor.
 
         Args:
@@ -81,9 +113,9 @@ class MLPredictor:
         self.inference_jobs = inference_jobs
 
     @staticmethod
-    def _iter_estimator_children(estimator: Any) -> list[Any]:
+    def _iter_estimator_children(estimator: BaseEstimator) -> list[BaseEstimator]:
         """Return nested estimator-like children for recursive traversal."""
-        children: list[Any] = []
+        children: list[BaseEstimator] = []
         for attr in ("model", "final_estimator", "final_estimator_"):
             child = getattr(estimator, attr, None)
             if child is not None:
@@ -112,7 +144,7 @@ class MLPredictor:
 
     @staticmethod
     def _apply_inference_n_jobs(
-        estimator: Any,
+        estimator: BaseEstimator,
         inference_jobs: int,
         visited: set[int] | None = None,
     ) -> None:
@@ -198,10 +230,10 @@ class MLPredictor:
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> Any:
+    ) -> NDArray[Any]:
         """Predict categories for multiple procedures."""
         if not procedure_texts:
-            return []
+            return np.array([], dtype=object)
         return self.pipeline.predict(
             build_feature_inputs(
                 procedure_texts,
@@ -231,10 +263,11 @@ class MLPredictor:
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> Any:
+    ) -> NDArray[Any]:
         """Get prediction probabilities for multiple procedures."""
         if not procedure_texts:
-            return []
+            n_classes = len(getattr(self.pipeline, "classes_", []))
+            return np.empty((0, n_classes))
         return self.pipeline.predict_proba(
             build_feature_inputs(
                 procedure_texts,

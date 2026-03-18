@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
+from ..types import Scalar
 from .config import SERVICE_COLUMN_CANDIDATES
+
+if TYPE_CHECKING:
+    from pandas import DataFrame
 
 
 @dataclass(frozen=True)
@@ -19,7 +23,7 @@ class FeatureInput:
     rule_warning_count: int = 0
 
 
-def coerce_text(value: Any) -> str:
+def coerce_text(value: Scalar) -> str:
     """Convert optional scalar values to stable strings."""
     if value is None:
         return ""
@@ -30,7 +34,7 @@ def coerce_text(value: Any) -> str:
     return text
 
 
-def coerce_service_text(value: Any) -> str:
+def coerce_service_text(value: Scalar | list[Scalar]) -> str:
     """Normalize service inputs to a newline-separated string."""
     if isinstance(value, list):
         normalized_items = [coerce_text(item) for item in value]
@@ -38,7 +42,7 @@ def coerce_service_text(value: Any) -> str:
     return coerce_text(value)
 
 
-def parse_int(value: Any, default: int = 0) -> int:
+def parse_int(value: Scalar, default: int = 0) -> int:
     """Safely normalize optional integer-like values."""
     if value is None:
         return default
@@ -56,7 +60,7 @@ def parse_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _coerce_service_alias_value(item: Mapping[str, Any]) -> str:
+def _coerce_service_alias_value(item: Mapping[str, Scalar]) -> str:
     """Return the first non-empty service alias from a raw input mapping."""
     for candidate in SERVICE_COLUMN_CANDIDATES:
         if candidate not in item:
@@ -67,17 +71,22 @@ def _coerce_service_alias_value(item: Mapping[str, Any]) -> str:
     return ""
 
 
-def feature_input_from_raw(item: Any) -> FeatureInput:
+def feature_input_from_raw(
+    item: str | FeatureInput | Mapping[str, Scalar],
+) -> FeatureInput:
     """Normalize one raw item into the shared FeatureInput schema."""
     if isinstance(item, FeatureInput):
         return item
 
     if isinstance(item, Mapping):
+        service_text = coerce_text(item.get("service_text", ""))
+        if not service_text:
+            service_text = _coerce_service_alias_value(item)
         return FeatureInput(
             procedure_text=coerce_text(
                 item.get("procedure_text", item.get("procedure", ""))
             ),
-            service_text=_coerce_service_alias_value(item),
+            service_text=service_text,
             rule_category=coerce_text(item.get("rule_category", "")),
             rule_warning_count=parse_int(item.get("rule_warning_count", 0)),
         )
@@ -85,16 +94,18 @@ def feature_input_from_raw(item: Any) -> FeatureInput:
     return FeatureInput(procedure_text=coerce_text(item))
 
 
-def normalize_feature_inputs(items: Sequence[Any]) -> list[FeatureInput]:
+def normalize_feature_inputs(
+    items: Sequence[str | FeatureInput | Mapping[str, Scalar]],
+) -> list[FeatureInput]:
     """Normalize raw ML feature inputs into a consistent internal structure."""
     return [feature_input_from_raw(item) for item in items]
 
 
 def build_feature_inputs(
-    procedure_texts: Sequence[Any],
-    services_list: Sequence[Any] | None = None,
-    rule_categories: Sequence[Any] | None = None,
-    rule_warning_counts: Sequence[Any] | None = None,
+    procedure_texts: Sequence[Scalar],
+    services_list: Sequence[Scalar | list[Scalar]] | None = None,
+    rule_categories: Sequence[Scalar] | None = None,
+    rule_warning_counts: Sequence[Scalar] | None = None,
 ) -> list[FeatureInput]:
     """Build batched FeatureInput objects from parallel procedure metadata."""
     expected_length = len(procedure_texts)
@@ -135,7 +146,7 @@ def build_feature_inputs(
 
 
 def resolve_service_column(
-    columns_source: Any,
+    columns_source: DataFrame | Mapping[str, str],
     requested_column: str | None = None,
 ) -> str | None:
     """Return the configured service column name when available."""
@@ -153,10 +164,10 @@ def resolve_service_column(
 def _normalize_parallel_values(
     *,
     name: str,
-    values: Sequence[Any] | None,
-    default_value: Any,
+    values: Sequence[Scalar | list[Scalar]] | None,
+    default_value: str | int,
     expected_length: int,
-) -> Sequence[Any]:
+) -> Sequence[Scalar | list[Scalar]]:
     """Validate optional parallel metadata sequences against procedure count."""
     if values is None:
         return [default_value for _ in range(expected_length)]

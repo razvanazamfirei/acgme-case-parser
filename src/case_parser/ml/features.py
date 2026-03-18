@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import lru_cache
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 from scipy.sparse import csr_matrix, hstack
@@ -23,7 +24,10 @@ from ..patterns.procedure_patterns import (
     VASCULAR_FEATURE_KEYWORDS,
     VASCULAR_SERVICE_HINT_KEYWORDS,
 )
+from ..types import Scalar
 from .inputs import FeatureInput, normalize_feature_inputs
+
+_T = TypeVar("_T")
 
 
 class FeatureExtractor:
@@ -31,7 +35,7 @@ class FeatureExtractor:
 
     _FEATURE_DTYPE = np.float32
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize feature extractors."""
         # Word-level TF-IDF
         self.tfidf_word = TfidfVectorizer(
@@ -50,8 +54,6 @@ class FeatureExtractor:
             min_df=2,
             dtype=self._FEATURE_DTYPE,
         )
-
-        self.feature_version = 2
         self._is_fitted = False
 
     @staticmethod
@@ -67,7 +69,10 @@ class FeatureExtractor:
             "pre",
         ]
 
-    def fit(self, procedures: list[Any]) -> FeatureExtractor:
+    def fit(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> FeatureExtractor:
         """Fit feature extractors on training data."""
         normalized_inputs = normalize_feature_inputs(procedures)
         texts = [self._compose_text(item) for item in normalized_inputs]
@@ -76,7 +81,10 @@ class FeatureExtractor:
         self._is_fitted = True
         return self
 
-    def transform(self, procedures: list[Any]) -> Any:
+    def transform(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> csr_matrix:
         """Transform procedures to feature matrix."""
         if not self._is_fitted:
             raise ValueError("FeatureExtractor must be fitted before transform")
@@ -102,7 +110,10 @@ class FeatureExtractor:
             format="csr",
         )
 
-    def fit_transform(self, procedures: list[Any]) -> Any:
+    def fit_transform(
+        self,
+        procedures: list[str | FeatureInput | Mapping[str, Scalar]],
+    ) -> csr_matrix:
         """Fit and transform in one step."""
         return self.fit(procedures).transform(procedures)
 
@@ -112,17 +123,6 @@ class FeatureExtractor:
     ) -> np.ndarray[Any, Any]:
         """Extract structured features for a batch of procedures."""
         unique_procedures, inverse_indices = self._dedupe_preserve_order(procedures)
-        version = getattr(self, "feature_version", 1)
-        if version <= 1:
-            unique_features = np.array(
-                [
-                    self._extract_structured_single_v1_cached(item.procedure_text)
-                    for item in unique_procedures
-                ],
-                dtype=self._FEATURE_DTYPE,
-            )
-            return unique_features[inverse_indices]
-
         unique_features = np.array(
             [
                 self._extract_structured_single_v2_cached(
@@ -146,12 +146,12 @@ class FeatureExtractor:
 
     @staticmethod
     def _dedupe_preserve_order(
-        values: list[Any],
-    ) -> tuple[list[Any], np.ndarray[Any, Any]]:
+        values: list[_T],
+    ) -> tuple[list[_T], np.ndarray[Any, Any]]:
         """Return unique values and inverse indices while keeping first-seen order."""
-        unique_values: list[Any] = []
+        unique_values: list[_T] = []
         inverse_indices: list[int] = []
-        value_to_index: dict[Any, int] = {}
+        value_to_index: dict[_T, int] = {}
 
         for value in values:
             index = value_to_index.get(value)
@@ -168,44 +168,11 @@ class FeatureExtractor:
         cls,
         vectorizer: TfidfVectorizer,
         texts: list[str],
-    ) -> Any:
+    ) -> csr_matrix:
         """Transform text features once per distinct composed text."""
         unique_texts, inverse_indices = cls._dedupe_preserve_order(texts)
         unique_features = vectorizer.transform(unique_texts)
         return unique_features[inverse_indices]
-
-    @staticmethod
-    @lru_cache(maxsize=32768)
-    def _extract_structured_single_v1_cached(procedure_text: str) -> tuple[float, ...]:
-        """Original structured feature set kept for backward compatibility."""
-        proc_upper = procedure_text.upper()
-        category, warnings = categorize_procedure(procedure_text, services=[])
-
-        return (
-            float("CPB" in proc_upper),
-            float("CARDIOPULMONARY BYPASS" in proc_upper),
-            float("BYPASS" in proc_upper and "CARDIAC" in proc_upper),
-            float("ENDOVASCULAR" in proc_upper),
-            float("OPEN" in proc_upper),
-            float("LAPAROSCOPIC" in proc_upper),
-            float("ROBOTIC" in proc_upper),
-            float("CARDIAC" in proc_upper or "HEART" in proc_upper),
-            float("CRANIOTOMY" in proc_upper or "INTRACRANIAL" in proc_upper),
-            float("THORACIC" in proc_upper or "CHEST" in proc_upper),
-            float("VASCULAR" in proc_upper or "VESSEL" in proc_upper),
-            float("CESAREAN" in proc_upper or "C-SECTION" in proc_upper),
-            float("VALVE" in proc_upper),
-            float("CABG" in proc_upper),
-            float("TAVR" in proc_upper or "TAVI" in proc_upper),
-            float("AVM" in proc_upper),
-            float("ANEURYSM" in proc_upper),
-            float("ECMO" in proc_upper),
-            float(len(warnings)),
-            float(len(procedure_text) // 100),
-            float(category is not None and "Cardiac" in str(category.value)),
-            float(category is not None and "Intracerebral" in str(category.value)),
-            float(category is not None and "vessel" in str(category.value)),
-        )
 
     @staticmethod
     @lru_cache(maxsize=32768)

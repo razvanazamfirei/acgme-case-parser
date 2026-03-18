@@ -211,6 +211,24 @@ def test_run_and_retrain_parsers_accept_hybrid_threshold():
     assert retrain_args.hybrid_threshold == pytest.approx(0.65)
 
 
+def test_review_parser_accepts_auto_retrain_flags():
+    args = workbench.build_parser().parse_args([
+        "review",
+        "--retrain-on-complete",
+        "--force",
+        "--skip-evaluate",
+        "--cross-validate",
+        "--hybrid-threshold",
+        "0.55",
+    ])
+
+    assert args.retrain_on_complete is True
+    assert args.force is True
+    assert args.skip_evaluate is True
+    assert args.cross_validate is True
+    assert args.hybrid_threshold == pytest.approx(0.55)
+
+
 def test_run_command_chain_forwards_explicit_hybrid_threshold(
     tmp_path,
     monkeypatch,
@@ -273,6 +291,7 @@ def test_run_review_interface_mentions_classic_fallback_on_tui_failure(monkeypat
             max_cases=10,
             ui_mode="tui",
             resume=False,
+            retrain_on_complete=False,
         ),
         reviewed_indices=set(),
     )
@@ -298,3 +317,127 @@ def test_run_review_interface_mentions_classic_fallback_on_tui_failure(monkeypat
 
     assert result is expected
     assert any("falling back to classic mode" in message for message in printed)
+
+
+def test_review_command_auto_retrains_after_completed_session(monkeypatch):
+    runtime = workbench.ReviewRuntime(
+        paths=workbench.ReviewPaths(
+            model_path=Path("model.pkl"),
+            data_path=Path("data.csv"),
+            output_path=Path("review_labels.csv"),
+            progress_path=Path("progress.json"),
+        ),
+        config=workbench.ReviewConfig(
+            focus="priority",
+            low_confidence=0.8,
+            max_cases=10,
+            ui_mode="tui",
+            resume=False,
+            retrain_on_complete=True,
+        ),
+        reviewed_indices=set(),
+    )
+    metrics = workbench.ReviewSessionMetrics(
+        reviewed_this_session=2,
+        labels_recorded=2,
+        staged_labels=[
+            {
+                "procedure": "PROC A",
+                "human_category": "Vaginal del",
+            }
+        ],
+    )
+    captured: dict[str, argparse.Namespace] = {}
+
+    monkeypatch.setattr(workbench, "_build_review_runtime", lambda _args: runtime)
+    monkeypatch.setattr(
+        workbench, "_build_review_queue", lambda _runtime: [object(), object()]
+    )
+    monkeypatch.setattr(
+        workbench, "_run_review_interface", lambda _queue, _runtime: metrics
+    )
+    monkeypatch.setattr(workbench, "_save_review_labels", lambda *_args: None)
+    monkeypatch.setattr(workbench, "_print_review_summary", lambda *_args: None)
+
+    def fake_retrain_command(retrain_args: argparse.Namespace) -> int:
+        captured["args"] = retrain_args
+        return 23
+
+    monkeypatch.setattr(workbench, "_retrain_command", fake_retrain_command)
+
+    args = workbench.build_parser().parse_args([
+        "review",
+        "--retrain-on-complete",
+        "--force",
+        "--skip-evaluate",
+        "--cross-validate",
+        "--hybrid-threshold",
+        "0.55",
+        "--eval-label-column",
+        "human_category",
+    ])
+
+    rc = workbench._review_command(args)
+
+    assert rc == 23
+    assert captured["args"].review_labels == str(runtime.paths.output_path)
+    assert captured["args"].label_column == "rule_category"
+    assert captured["args"].force is True
+    assert captured["args"].skip_evaluate is True
+    assert captured["args"].cross_validate is True
+    assert captured["args"].eval_label_column == "human_category"
+    assert captured["args"].hybrid_threshold == pytest.approx(0.55)
+
+
+def test_review_command_does_not_retrain_when_user_quits(monkeypatch):
+    runtime = workbench.ReviewRuntime(
+        paths=workbench.ReviewPaths(
+            model_path=Path("model.pkl"),
+            data_path=Path("data.csv"),
+            output_path=Path("review_labels.csv"),
+            progress_path=Path("progress.json"),
+        ),
+        config=workbench.ReviewConfig(
+            focus="priority",
+            low_confidence=0.8,
+            max_cases=10,
+            ui_mode="tui",
+            resume=False,
+            retrain_on_complete=True,
+        ),
+        reviewed_indices=set(),
+    )
+    metrics = workbench.ReviewSessionMetrics(
+        reviewed_this_session=1,
+        labels_recorded=1,
+        quit_requested=True,
+    )
+    printed: list[str] = []
+
+    monkeypatch.setattr(workbench, "_build_review_runtime", lambda _args: runtime)
+    monkeypatch.setattr(workbench, "_build_review_queue", lambda _runtime: [object()])
+    monkeypatch.setattr(
+        workbench, "_run_review_interface", lambda _queue, _runtime: metrics
+    )
+    monkeypatch.setattr(workbench, "_print_review_summary", lambda *_args: None)
+    monkeypatch.setattr(workbench, "_save_review_labels", lambda *_args: None)
+    monkeypatch.setattr(
+        workbench.console,
+        "print",
+        lambda message: printed.append(str(message)),
+    )
+    monkeypatch.setattr(
+        workbench,
+        "_retrain_command",
+        lambda _args: pytest.fail("retrain should not run after quit"),
+    )
+
+    args = workbench.build_parser().parse_args([
+        "review",
+        "--retrain-on-complete",
+    ])
+
+    rc = workbench._review_command(args)
+
+    assert rc == 0
+    assert any("Review ended early" in message for message in printed)

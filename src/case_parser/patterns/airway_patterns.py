@@ -22,7 +22,6 @@ Patterns are case-insensitive and use standard Python regex syntax.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import pandas as pd
 
@@ -138,7 +137,7 @@ NEGATION_PATTERNS = [
 
 
 def extract_airway_management(  # noqa: PLR0914, PLR0915
-    notes: Any, source_field: str = "procedure_notes"
+    notes: str | None, source_field: str = "procedure_notes"
 ) -> tuple[list[AirwayManagement], list[ExtractionFinding]]:
     """
     Extract airway management techniques with pattern matching and confidence scoring.
@@ -164,7 +163,7 @@ def extract_airway_management(  # noqa: PLR0914, PLR0915
         techniques, findings = extract_airway_management(notes)
         # techniques: [AirwayManagement.ORAL_ETT, AirwayManagement.VIDEO_LARYNGOSCOPE]
     """
-    if notes is None or (isinstance(notes, float) and pd.isna(notes)):
+    if pd.isna(notes):
         return [], []
 
     text = str(notes)

@@ -1,14 +1,14 @@
 exclude        = [".claude/"]
 indent-width   = 4
 line-length    = 88
-target-version = "py312"
+target-version = "py313"
 
 [lint]
   fixable = ["ALL"]
   ignore = ["PLR2004"]
   preview = true
   select = [
-    # "ANN",
+    "ANN",
     # "ARG",
     "B",
     "C4",
@@ -38,6 +38,7 @@ target-version = "py312"
   ]
 
   [lint.per-file-ignores]
+    "ml_training/**" = ["ANN"]
     "tests/**" = [
       "S101",
       "PLR6301",
