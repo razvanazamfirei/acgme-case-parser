@@ -70,11 +70,19 @@ If your file uses different headers, override them with `--col-*` options.
 case-parser input.xlsx output.xlsx --validation-report validation.txt
 ```
 
-2. Export JSON to other systems.
+2. Generate a validation report in Excel for easier filtering.
 
 ```bash
-case-parser input.xlsx output.xlsx --json-export cases.json --resident-id "1325527"
+case-parser input.xlsx output.xlsx --validation-report validation.xlsx
 ```
+
+3. Review categorizations interactively for bug tracking.
+
+```bash
+case-parser input.xlsx output.xlsx --bug-track
+```
+
+This will prompt you for each case to confirm the prediction. It outputs a Markdown table you can paste into GitHub or Jira to track categorization fixes.
 
 ## Chrome Extension Setup
 

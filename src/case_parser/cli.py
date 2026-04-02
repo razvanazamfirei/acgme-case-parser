@@ -7,6 +7,7 @@ import logging
 import sys
 import traceback
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -18,8 +19,7 @@ from rich.table import Table
 if TYPE_CHECKING:
     from pandas import DataFrame
 
-    from .domain import ParsedCase
-
+from .domain import ParsedCase, ProcedureCategory
 from .exceptions import CaseParserError
 from .io import (
     CsvHandler,
@@ -36,6 +36,19 @@ from .models import (
     OUTPUT_FORMAT_VERSION,
     STANDALONE_OUTPUT_FORMAT_VERSION,
     ColumnMap,
+)
+from .patterns.categorization import (
+    OBGYN_SERVICE_KEYWORDS,
+    _apply_rule_category,
+    _categorize_obgyn_text,
+    _normalize_categorization_request,
+    _resolve_category_result,
+    categorize_obgyn,
+)
+from .patterns.procedure_patterns import (
+    PROCEDURE_RULES,
+    PROCEDURE_TEXT_RULES,
+    ProcedureRule,
 )
 from .processor import CaseProcessor
 from .standalone_exports import (
@@ -115,15 +128,22 @@ Examples:
 
   # With validation report
   %(prog)s input.xlsx output.xlsx --validation-report validation.txt
+
+  # Debug categorization with interactive bug tracking report
+  %(prog)s debug-categorize "CABG" "CARDIAC" --bug-track
+
+  # Process and review all categorizations interactively for bug tracking
+  %(prog)s input.xlsx output.xlsx --bug-track
         """,
     )
 
     # Required arguments
     parser.add_argument(
         "input_file",
+        nargs="?",
         help="Input Excel file path or directory containing Excel files",
     )
-    parser.add_argument("output_file", help="Output Excel file path (.xlsx)")
+    parser.add_argument("output_file", nargs="?", help="Output Excel file path (.xlsx)")
 
     # Optional arguments
     parser.add_argument("--sheet", help="Sheet name to read (default: first sheet)")
@@ -180,6 +200,14 @@ Examples:
             "but higher values often do not improve smaller runs)"
         ),
     )
+    parser.add_argument(
+        "--bug-track",
+        action="store_true",
+        help=(
+            "Interactively review categorization results and output a "
+            "Markdown table for bug tracking."
+        ),
+    )
 
     # Column override options
     for field_name in ColumnMap.__dataclass_fields__:
@@ -221,6 +249,9 @@ def validate_arguments(args: argparse.Namespace) -> None:
         ValueError: If the input/output formats are unsupported, no Excel files
             are found in a directory, or the year is out of range.
     """
+    if not args.input_file or not args.output_file:
+        raise ValueError("Both input_file and output_file are required for processing.")
+
     input_path = Path(args.input_file)
     output_path = Path(args.output_file)
 
@@ -550,6 +581,289 @@ def print_summary(output_file: Path, summary: dict[str, Any]) -> None:
     console.print("[bold green]Done.[/bold green]")
 
 
+def _trace_match_rules(
+    values: list[str],
+    procedure_text: str,
+    rules: list[ProcedureRule],
+    *,
+    exclude_in_values: bool,
+) -> list[dict]:
+    """Trace the matching process for a set of rules."""
+    matches = []
+    seen_categories = set()
+
+    for value in values:
+        for rule in rules:
+            # Check for inclusion
+            matching_keyword = next((kw for kw in rule.keywords if kw in value), None)
+            if matching_keyword is None:
+                continue
+
+            # Check for exclusion
+            excluding_keyword = None
+            if rule.exclude_keywords:
+                excluding_keyword = next(
+                    (
+                        excl
+                        for excl in rule.exclude_keywords
+                        if excl in procedure_text
+                        or (exclude_in_values and excl in value)
+                    ),
+                    None,
+                )
+
+            if excluding_keyword:
+                continue
+
+            # If we reach here, it's a match
+            category = _apply_rule_category(rule.category, procedure_text)
+
+            if category not in seen_categories:
+                seen_categories.add(category)
+                matches.append({
+                    "category": category,
+                    "rule_category": rule.category,
+                    "matched_value": value,
+                    "matched_keyword": matching_keyword,
+                    "source": "Service" if exclude_in_values else "Text",
+                })
+            # First matching rule wins for this value
+            break
+
+    return matches
+
+
+def print_bug_tracking_table(cases: list[ParsedCase]) -> None:
+    """Print a Markdown table for bug tracking of categorization.
+
+    This generates a table that is more concise and includes matched rules.
+    It prompts the user interactively to select the correct category for each case.
+    """
+    if not cases:
+        return
+
+    # List of all categories to show as options, sorted for consistency
+    categories = sorted([c.value for c in ProcedureCategory])
+
+    final_rows = []
+    print("\n[bold]Starting Interactive Bug Tracking Review...[/bold]")
+    print("For each case, confirm the predicted category or select the correct one.")
+
+    for i, case in enumerate(cases):
+        procedure = case.procedure or "N/A"
+        services = ", ".join(case.services) or "N/A"
+        predicted = case.procedure_category.value
+        rules = ", ".join(case.matched_rules) or "None"
+
+        print(f"\n[bold cyan]Case {i + 1}/{len(cases)}[/bold cyan]")
+        print(f"  [bold]Procedure:[/bold] {procedure}")
+        print(f"  [bold]Services:[/bold]  {services}")
+        print(f"  [bold]Predicted:[/bold] [green]{predicted}[/green]")
+        print(f"  [bold]Rules Matched:[/bold] {rules}")
+
+        print("\nSelect the correct category:")
+        print("  0. [Use Predicted]")
+        for idx, cat in enumerate(categories, 1):
+            print(f"  {idx}. {cat}")
+
+        choice = input(f"\nYour choice (0-{len(categories)}) [0]: ").strip()
+
+        if not choice or choice == "0":
+            correct_cat = predicted
+        else:
+            try:
+                choice_idx = int(choice)
+                if 1 <= choice_idx <= len(categories):
+                    correct_cat = categories[choice_idx - 1]
+                else:
+                    print(f"[red]Invalid choice. Using predicted: {predicted}[/red]")
+                    correct_cat = predicted
+            except ValueError:
+                print(f"[red]Invalid input. Using predicted: {predicted}[/red]")
+                correct_cat = predicted
+
+        # Normalize and escape values for Markdown table
+        procedure_esc = procedure.replace("|", "\\|").replace("\n", " ")
+        services_esc = services.replace("|", "\\|")
+        rules_esc = rules.replace("|", "\\|")
+
+        row = (
+            f"| {procedure_esc} | {services_esc} | "
+            f"**{predicted}** | {correct_cat} | {rules_esc} | [ ] |"
+        )
+        final_rows.append(row)
+
+    # Output the final Markdown table
+    print("\n### Categorization Bug Tracking\n")
+    print(
+        "| Original Procedure | Services | Predicted Category | "
+        "Correct Category | Matched Rules | Done |"
+    )
+    print("| :--- | :--- | :--- | :--- | :--- | :---: |")
+    for row in final_rows:
+        print(row)
+    print()
+
+
+def _collect_trace_matches(
+    procedure_text: str | None,
+    normalized_services: list[str],
+) -> list[dict[str, Any]]:
+    """Internal helper to gather rule matches for debugging."""
+    trace_matches = []
+
+    # 1. Match Services
+    service_matches = _trace_match_rules(
+        list(normalized_services),
+        procedure_text,
+        PROCEDURE_RULES,
+        exclude_in_values=True,
+    )
+    trace_matches.extend(service_matches)
+
+    # 2. Check OB/GYN promotion
+    has_obstetric_service = any(
+        any(keyword in service for keyword in OBGYN_SERVICE_KEYWORDS)
+        for service in normalized_services
+    )
+    if has_obstetric_service:
+        obgyn_category = _categorize_obgyn_text(
+            procedure_text,
+            allow_generic_neuraxial=True,
+        )
+        if obgyn_category != ProcedureCategory.OTHER:
+            trace_matches.append({
+                "category": obgyn_category,
+                "rule_category": "OB/GYN Promotion",
+                "matched_value": "OB/GYN Service Context",
+                "matched_keyword": "Multiple",
+                "source": "Service Context",
+            })
+
+    # 3. Fallback to text matching
+    if not trace_matches and procedure_text:
+        text_matches = _trace_match_rules(
+            [procedure_text],
+            procedure_text,
+            PROCEDURE_TEXT_RULES,
+            exclude_in_values=False,
+        )
+        trace_matches.extend(text_matches)
+
+        if not trace_matches:
+            obgyn_category = categorize_obgyn(procedure_text)
+            if obgyn_category != ProcedureCategory.OTHER:
+                trace_matches.append({
+                    "category": obgyn_category,
+                    "rule_category": "OB/GYN Detection",
+                    "matched_value": procedure_text,
+                    "matched_keyword": "OB Keywords",
+                    "source": "Text Fallback",
+                })
+    return trace_matches
+
+
+def _display_trace_matches(trace_matches: list[dict[str, Any]]) -> None:
+    """Internal helper to display trace matches in a Rich table."""
+    if trace_matches:
+        table = Table(
+            title="Match Trace", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Source", style="dim")
+        table.add_column("Rule Category")
+        table.add_column("Matched Value")
+        table.add_column("Keyword", style="green")
+        table.add_column("Result Category", style="bold")
+
+        for m in trace_matches:
+            table.add_row(
+                m["source"],
+                m["rule_category"],
+                m["matched_value"],
+                m["matched_keyword"],
+                m["category"].value,
+            )
+        console.print(table)
+    else:
+        console.print("[yellow]No rules matched.[/yellow]")
+
+
+def handle_debug_categorize(
+    procedure: str | None,
+    services_input: str | list[str] | None,
+    bug_track: bool = False,
+) -> None:
+    """Run categorization with detailed tracing and display results."""
+    # Normalize inputs
+    procedure_text, normalized_services = _normalize_categorization_request(
+        procedure, services_input
+    )
+
+    if not bug_track:
+        console.print(
+            Panel(
+                f"[bold]Procedure:[/bold] {procedure_text or '(None)'}\n"
+                f"[bold]Services:[/bold] {list(normalized_services) or '(None)'}",
+                title="Categorization Debugger",
+                border_style="cyan",
+            )
+        )
+
+    # Gather Match Trace
+    trace_matches = _collect_trace_matches(procedure_text, list(normalized_services))
+
+    # Display Trace Table
+    if not bug_track:
+        _display_trace_matches(trace_matches)
+
+    # Final Result
+    categories = [m["category"] for m in trace_matches]
+    final_category, warnings = _resolve_category_result(categories, normalized_services)
+
+    if not bug_track:
+        result_style = (
+            "bold green" if final_category != ProcedureCategory.OTHER else "bold yellow"
+        )
+        console.print(
+            Panel(
+                f"[bold]Final Category:[/bold] [{result_style}]"
+                f"{final_category.value}[/]\n"
+                f"[bold]Warnings:[/bold] {warnings or 'None'}",
+                title="Result",
+                border_style="green",
+            )
+        )
+
+        if warnings:
+            for w in warnings:
+                console.print(f"[bold yellow]WARNING:[/bold yellow] {w}")
+    else:
+        # Output as Markdown row
+
+        # Format matched rules for the table
+        matched_rules_summary = [
+            f"{m['source']}:{m['rule_category']}({m['matched_keyword']})"
+            for m in trace_matches
+        ]
+
+        # Create a dummy ParsedCase for the table formatter
+        dummy_case = ParsedCase(
+            case_date=datetime.now(UTC).date(),
+            episode_id="DEBUG",
+            procedure=procedure_text,
+            services=list(normalized_services),
+            procedure_category=final_category,
+            matched_rules=matched_rules_summary,
+            raw_date=None,
+            raw_age=None,
+            raw_asa=None,
+            raw_anesthesia_type=None,
+            procedure_notes=None,
+            responsible_provider=None,
+        )
+        print_bug_tracking_table([dummy_case])
+
+
 def main() -> None:
     """Main entry point for the case-parser CLI.
 
@@ -560,6 +874,15 @@ def main() -> None:
     to separate block and combined neuraxial/delivery workbooks. Exits with a
     non-zero status code on any error.
     """
+    if len(sys.argv) > 1 and sys.argv[1] == "debug-categorize":
+        bug_track = "--bug-track" in sys.argv
+        # Basic manual parsing for debug-categorize
+        args_without_flag = [a for a in sys.argv if a != "--bug-track"]
+        proc = args_without_flag[2] if len(args_without_flag) > 2 else None
+        serv = args_without_flag[3].split(",") if len(args_without_flag) > 3 else []
+        handle_debug_categorize(proc, serv, bug_track=bug_track)
+        return
+
     parser = build_arg_parser()
     args = parser.parse_args()
     setup_logging(level=args.log_level, verbose=args.verbose)
@@ -602,6 +925,9 @@ def main() -> None:
             else:
                 console.print("[yellow]Warning:[/yellow] No cases to process")
             return
+
+        if args.bug_track:
+            print_bug_tracking_table(main_cases)
 
         if args.validation_report:
             save_validation_report(
