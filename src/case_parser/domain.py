@@ -144,6 +144,9 @@ class ParsedCase(BaseModel):
     procedure_category: ProcedureCategory = Field(
         default=ProcedureCategory.OTHER, description="Categorized procedure"
     )
+    matched_rules: list[str] = Field(
+        default_factory=list, description="List of rule names/descriptions that matched"
+    )
 
     # Extracted findings (with type safety)
     airway_management: list[AirwayManagement] = Field(

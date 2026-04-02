@@ -99,21 +99,36 @@ python sort_logs.py --names-file residents.txt --input-dir Output
 
 ```bash
 # Test a specific procedure categorization
-python debug_categorization.py "CABG with CPB" "CARDIAC SURGERY"
+case-parser debug-categorize "CABG with CPB" "CARDIAC SURGERY"
 
 # Test with multiple services
-python debug_categorization.py "AVR" "CARDIAC,THORACIC"
+case-parser debug-categorize "AVR" "CARDIAC,THORACIC"
 
-# Interactive mode
-python debug_categorization.py --interactive
+# Interactive bug tracking review
+case-parser debug-categorize "CABG" "CARDIAC" --bug-track
 ```
 
-The debug script displays:
+The debug command displays:
 
 - Rule matching trace with formatted tables
 - Pattern matches and exclusions
 - The final category with color-coded results
 - Warnings and special cases
+
+### Interactive Bug Tracking
+
+The `--bug-track` flag enables an interactive review mode for categorization results:
+
+```bash
+# Review all cases in a file interactively
+case-parser input.xlsx output.xlsx --bug-track
+```
+
+Features:
+- **Interactive Selection**: Prompts you to confirm or correct the predicted category for each case.
+- **Matched Rules Display**: Shows exactly which rules triggered the categorization during review.
+- **Markdown Output**: Generates a concise Markdown table suitable for bug trackers (e.g., GitHub Issues), including original procedure, services, predicted vs. correct category, and matched rules.
+- **Progress Tracking**: Includes a "Done" checkbox for each row in the Markdown table.
 
 ### Column Mapping
 
