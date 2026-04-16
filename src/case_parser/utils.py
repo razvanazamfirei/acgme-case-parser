@@ -1,6 +1,11 @@
+"""Shared utility helpers for case-parser scripts and tools."""
+
 from __future__ import annotations
 
-"""Shared utility helpers for case-parser scripts and tools."""
+from .types import Scalar
+
+LRU_CACHE_SIZE = 32768
+_MISSING_TEXT_SENTINELS = {"", "<NA>", "nan", "NaN", "None"}
 
 
 def normalize_stem(name: str) -> str:
@@ -30,3 +35,20 @@ def format_name(name: str) -> str:
             return f"{second.title()} {first.title()}"
         return f"{first.title()} {second.title()}"
     return cleaned.title()
+
+
+def clean_text(value: Scalar | None) -> str:
+    """Normalize text values to a plain string or empty string.
+
+    Args:
+        value: Any scalar value or None.
+
+    Returns:
+        Stripped string with missing-value sentinels normalized to empty string.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text in _MISSING_TEXT_SENTINELS:
+        return ""
+    return text

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..types import Scalar
+from ..utils import clean_text
 from .config import SERVICE_COLUMN_CANDIDATES
 
 if TYPE_CHECKING:
@@ -23,23 +24,12 @@ class FeatureInput:
     rule_warning_count: int = 0
 
 
-def coerce_text(value: Scalar) -> str:
-    """Convert optional scalar values to stable strings."""
-    if value is None:
-        return ""
-
-    text = str(value).strip()
-    if text in {"", "<NA>", "nan", "NaN", "None"}:
-        return ""
-    return text
-
-
 def coerce_service_text(value: Scalar | list[Scalar]) -> str:
     """Normalize service inputs to a newline-separated string."""
     if isinstance(value, list):
-        normalized_items = [coerce_text(item) for item in value]
+        normalized_items = [clean_text(item) for item in value]
         return "\n".join(item for item in normalized_items if item)
-    return coerce_text(value)
+    return clean_text(value)
 
 
 def parse_int(value: Scalar, default: int = 0) -> int:
@@ -47,7 +37,7 @@ def parse_int(value: Scalar, default: int = 0) -> int:
     if value is None:
         return default
     if isinstance(value, str):
-        text = coerce_text(value)
+        text = clean_text(value)
         if not text:
             return default
         try:
@@ -79,19 +69,19 @@ def feature_input_from_raw(
         return item
 
     if isinstance(item, Mapping):
-        service_text = coerce_text(item.get("service_text", ""))
+        service_text = clean_text(item.get("service_text", ""))
         if not service_text:
             service_text = _coerce_service_alias_value(item)
         return FeatureInput(
-            procedure_text=coerce_text(
+            procedure_text=clean_text(
                 item.get("procedure_text", item.get("procedure", ""))
             ),
             service_text=service_text,
-            rule_category=coerce_text(item.get("rule_category", "")),
+            rule_category=clean_text(item.get("rule_category", "")),
             rule_warning_count=parse_int(item.get("rule_warning_count", 0)),
         )
 
-    return FeatureInput(procedure_text=coerce_text(item))
+    return FeatureInput(procedure_text=clean_text(item))
 
 
 def normalize_feature_inputs(
@@ -130,10 +120,10 @@ def build_feature_inputs(
 
     return [
         FeatureInput(
-            procedure_text=coerce_text(procedure_text),
+            procedure_text=clean_text(procedure_text),
             service_text=coerce_service_text(service_text),
-            rule_category=coerce_text(rule_category),
-            rule_warning_count=parse_int(rule_warning_count),
+            rule_category=clean_text(rule_category),  # type: ignore[arg-type]
+            rule_warning_count=parse_int(rule_warning_count),  # type: ignore[arg-type]
         )
         for procedure_text, service_text, rule_category, rule_warning_count in zip(
             procedure_texts,

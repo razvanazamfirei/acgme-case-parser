@@ -1112,7 +1112,7 @@ class TestProcessDataframeExtended:
         df = pd.DataFrame([_FULL_ROW])
 
         with (
-            caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+            caplog.at_level(logging.WARNING, logger="case_parser.processor"),
             patch.object(processor, "_should_use_process_pool", return_value=True),
             patch.object(
                 processor,
@@ -1124,7 +1124,8 @@ class TestProcessDataframeExtended:
 
         assert len(cases) == 1
         assert cases[0].episode_id == "12345"
-        assert "Process chunk execution failed" in caplog.text
+        assert caplog.records[-1].levelname == "ERROR"
+        assert "falling back to in-process row handling" in caplog.text
 
     def test_batch_prepared_dates_preserve_case_dates_and_warnings(self, processor):
         df = pd.DataFrame([
@@ -1173,7 +1174,7 @@ class TestProcessDataframeExtended:
         df = pd.DataFrame([_FULL_ROW, {**_FULL_ROW, "Episode ID": "67890"}])
 
         with (
-            caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+            caplog.at_level(logging.WARNING, logger="case_parser.processor"),
             patch.object(processor.classifier, "classify_many", return_value=[]),
         ):
             cases = processor.process_dataframe(df)
@@ -1192,7 +1193,7 @@ class TestProcessDataframeExtended:
         processor_module._PROCESS_CHUNK_LOCK.acquire()
         try:
             with (
-                caplog.at_level(logging.ERROR, logger="case_parser.processor"),
+                caplog.at_level(logging.WARNING, logger="case_parser.processor"),
                 patch.object(processor, "_should_use_process_pool", return_value=True),
             ):
                 cases = processor.process_dataframe(df, workers=2)

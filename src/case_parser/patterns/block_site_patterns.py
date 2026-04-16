@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Final
 
+from ..utils import clean_text
+
 PERIPHERAL_BLOCK_SITE_TERMS: tuple[str, ...] = (
     "Adductor Canal",
     "Ankle",
@@ -155,10 +157,10 @@ def normalize_block_site_terms(
     terms are detected. Peripheral sites and neuraxial locations both map to
     their fixed term sets.
     """
-    primary_text = _clean_optional_text(primary_block)
-    procedure_text = _clean_optional_text(procedure_name)
-    notes_text = _clean_optional_text(procedure_notes)
-    case_procedure_text = _clean_optional_text(case_procedure)
+    primary_text = clean_text(primary_block)
+    procedure_text = clean_text(procedure_name)
+    notes_text = clean_text(procedure_notes)
+    case_procedure_text = clean_text(case_procedure)
 
     if not (primary_text or procedure_text or notes_text or case_procedure_text):
         return None
@@ -221,16 +223,6 @@ def _infer_brachial_plexus_site(
         return "Interscalene"
 
     return _DEFAULT_BRACHIAL_PLEXUS_SITE
-
-
-def _clean_optional_text(value: str | None) -> str:
-    """Normalize optional text values to a plain string or empty string."""
-    if value is None:
-        return ""
-    text = str(value).strip()
-    if text in {"", "<NA>", "nan", "NaN", "None"}:
-        return ""
-    return text
 
 
 def _match_canonical_terms(

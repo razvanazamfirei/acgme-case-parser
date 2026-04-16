@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    pass
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+_LOG_LEVELS: dict[str, int] = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
 
 
 def setup_logging(level: LogLevel = "INFO", verbose: bool = False) -> None:
@@ -21,7 +32,7 @@ def setup_logging(level: LogLevel = "INFO", verbose: bool = False) -> None:
             or "CRITICAL"). Ignored when verbose is True.
         verbose: If True, forces DEBUG level regardless of the level argument.
     """
-    log_level = logging.DEBUG if verbose else getattr(logging, level.upper())
+    log_level = logging.DEBUG if verbose else _LOG_LEVELS[level.upper()]
 
     # Create formatter
     formatter = logging.Formatter(

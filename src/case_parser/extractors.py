@@ -12,18 +12,14 @@ For implementation details and pattern definitions, see:
 
 from __future__ import annotations
 
-import math
 import re
-from numbers import Real
-
-import pandas as pd
 
 from .patterns import (
     extract_airway_management,
     extract_monitoring,
     extract_vascular_access,
 )
-from .types import Scalar
+from .types import Scalar, is_missing_scalar
 
 __all__ = [
     "clean_names",
@@ -34,20 +30,7 @@ __all__ = [
 ]
 
 
-def _is_missing_scalar(value: Scalar) -> bool:
-    """Return True for scalar missing-value sentinels handled by these helpers."""
-    if value is None or value is pd.NA or value is pd.NaT:
-        return True
-    # Preserve literal strings like "nan"; only real scalar null sentinels
-    # should be treated as missing by these helpers.
-    if isinstance(value, (str, bytes)):
-        return False
-    if isinstance(value, Real):
-        return math.isnan(float(value))
-    return False
-
-
-def clean_names(name: object) -> str:
+def clean_names(name: Scalar | None) -> str:
     """
     Clean and standardize provider names.
 
@@ -63,7 +46,7 @@ def clean_names(name: object) -> str:
         clean_names("Smith, John MD")
         # Returns: "Smith, John"
     """
-    if _is_missing_scalar(name):
+    if is_missing_scalar(name):
         return ""
     # Take only the first attending if multiple are listed
     name = str(name).split(";")[0].strip()
@@ -89,7 +72,7 @@ def extract_attending(value: Scalar) -> str:
         First attending name with the timestamp removed, or an empty string
         if value is NaN.
     """
-    if _is_missing_scalar(value):
+    if is_missing_scalar(value):
         return ""
     first_part = str(value).split(";")[0]
     return first_part.split("@")[0].strip()

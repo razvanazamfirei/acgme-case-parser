@@ -11,15 +11,18 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import chain, starmap
-from typing import Any
 
 import pandas as pd
 
 from .domain import (
     AgeCategory,
+    AirwayManagement,
     AnesthesiaType,
+    ExtractionFinding,
+    MonitoringTechnique,
     ParsedCase,
     ProcedureCategory,
+    VascularAccess,
 )
 from .extractors import (
     clean_names,
@@ -43,18 +46,23 @@ from .patterns.block_site_patterns import (
     PERIPHERAL_BLOCK_SITE_TERMS,
     normalize_block_site_terms,
 )
-from .types import Scalar
+from .types import Scalar, is_missing_scalar
 
 logger = logging.getLogger(__name__)
+_EPISODE_ID_MAX_LENGTH = 25
 _CANONICAL_BLOCK_SITE_TERMS = {
     *PERIPHERAL_BLOCK_SITE_TERMS,
     *NEURAXIAL_BLOCK_SITE_TERMS,
 }
 _GENERIC_PERIPHERAL_BLOCK_SITE = "Other - peripheral nerve blockade site"
-_PROCESS_POOL_MIN_ROWS = 25_000
-_PROCESS_POOL_TARGET_CHUNK_ROWS = 12_500
+_PROCESS_POOL_MIN_ROWS_DEFAULT = 25_000
+_PROCESS_POOL_TARGET_CHUNK_ROWS_DEFAULT = 12_500
+
+# Multiprocessing state for fork-based worker initialization.
+# Required because ProcessPoolExecutor uses fork() and workers cannot receive
+# complex objects directly - they inherit the parent's memory space.
 _PROCESS_CHUNK_LOCK = threading.Lock()
-_PROCESS_CHUNK_STATE: dict[str, Any] = {
+_PROCESS_CHUNK_STATE: dict[str, CaseProcessor | pd.DataFrame | None] = {
     "df": None,
     "processor": None,
 }
@@ -73,6 +81,8 @@ def _init_process_chunk_worker(
     default_year: int,
     use_ml: bool,
     ml_threshold: float,
+    process_pool_min_rows: int,
+    process_pool_target_chunk_rows: int,
 ) -> None:
     """Initialize one CaseProcessor per process-pool worker."""
     _PROCESS_CHUNK_STATE["processor"] = CaseProcessor(
@@ -80,6 +90,8 @@ def _init_process_chunk_worker(
         default_year=default_year,
         use_ml=use_ml,
         ml_threshold=ml_threshold,
+        process_pool_min_rows=process_pool_min_rows,
+        process_pool_target_chunk_rows=process_pool_target_chunk_rows,
     )
 
 
@@ -105,11 +117,11 @@ class _ParsedRowMetadata:
     age_category: AgeCategory | None
     asa_str: str
     emergent: bool
-    raw_asa: object
+    raw_asa: Scalar | None
     anesthesia_type: AnesthesiaType | None
     services: list[str]
     procedure_category: ProcedureCategory
-    procedure_text: object
+    procedure_text: str | None
 
 
 @dataclass(frozen=True)
@@ -125,9 +137,9 @@ class _ExtractionResult:
     """Extraction results from notes/procedure text."""
 
     anesthesia_type: AnesthesiaType | None
-    airway_management: list[Any]
-    vascular_access: list[Any]
-    monitoring: list[Any]
+    airway_management: list[AirwayManagement]
+    vascular_access: list[VascularAccess]
+    monitoring: list[MonitoringTechnique]
 
 
 @dataclass
@@ -150,6 +162,8 @@ class CaseProcessor:
         default_year: int = 2025,
         use_ml: bool = True,
         ml_threshold: float = DEFAULT_ML_THRESHOLD,
+        process_pool_min_rows: int | None = None,
+        process_pool_target_chunk_rows: int | None = None,
     ) -> None:
         """Initialize the processor with column mapping and default year.
 
@@ -158,11 +172,25 @@ class CaseProcessor:
             default_year: Default year for date parsing
             use_ml: Whether to use ML-enhanced classification
             ml_threshold: Minimum ML confidence threshold (0.0-1.0)
+            process_pool_min_rows: Minimum rows before using process pool.
+                Defaults to 25000.
+            process_pool_target_chunk_rows: Target rows per chunk when
+                process pool is used. Defaults to 12500.
         """
         self.column_map = column_map
         self.default_year = default_year
         self._use_ml = use_ml
         self._ml_threshold = ml_threshold
+        self._process_pool_min_rows = (
+            process_pool_min_rows
+            if process_pool_min_rows is not None
+            else _PROCESS_POOL_MIN_ROWS_DEFAULT
+        )
+        self._process_pool_target_chunk_rows = (
+            process_pool_target_chunk_rows
+            if process_pool_target_chunk_rows is not None
+            else _PROCESS_POOL_TARGET_CHUNK_ROWS_DEFAULT
+        )
 
         # Initialize hybrid classifier
         if use_ml:
@@ -210,7 +238,7 @@ class CaseProcessor:
         """
         warnings = []
 
-        if age is None or (isinstance(age, float) and pd.isna(age)):
+        if is_missing_scalar(age):
             warnings.append("Missing age value")
             return None, warnings
 
@@ -255,9 +283,7 @@ class CaseProcessor:
         """
         warnings = []
 
-        if anesthesia_input is None or (
-            isinstance(anesthesia_input, float) and pd.isna(anesthesia_input)
-        ):
+        if is_missing_scalar(anesthesia_input):
             warnings.append("Missing anesthesia type")
             return None, warnings
 
@@ -335,7 +361,7 @@ class CaseProcessor:
     @staticmethod
     def _infer_anesthesia_type(  # noqa: PLR0911
         anesthesia_type: AnesthesiaType | None,
-        airway_mgmt: list,
+        airway_mgmt: list[AirwayManagement],
         procedure_text: Scalar,
         procedure_category: ProcedureCategory,
         notes: Scalar,
@@ -422,8 +448,8 @@ class CaseProcessor:
 
     @staticmethod
     def _extend_findings(
-        new_findings: list[Any],
-        all_findings: list[Any],
+        new_findings: list[ExtractionFinding],
+        all_findings: list[ExtractionFinding],
         confidence_scores: list[float],
     ) -> None:
         """Append extraction findings and track their confidence scores."""
@@ -438,7 +464,7 @@ class CaseProcessor:
         return [item.strip() for item in str(raw_services).split("\n") if item.strip()]
 
     @staticmethod
-    def _optional_str(value: object) -> str | None:
+    def _optional_str(value: Scalar) -> str | None:
         """Convert non-null values to string and preserve nulls as None."""
         if pd.isna(value):
             return None
@@ -504,7 +530,7 @@ class CaseProcessor:
 
     def _build_categorization_input_from_row(
         self,
-        row: Mapping[Hashable, Any],
+        row: Mapping[Hashable, Scalar],
         services: list[str],
     ) -> _CategorizationInput:
         """Project a raw input row into the classifier-specific payload."""
@@ -540,7 +566,17 @@ class CaseProcessor:
         return None
 
     def _build_error_case(self, message: str) -> ParsedCase:
-        """Create a minimal ParsedCase used for row-level failures."""
+        """Create a minimal ParsedCase for row-level failures.
+
+        Returns a ParsedCase with all fields set to None/empty/defaults
+        so processing can continue without crashing downstream code.
+
+        Args:
+            message: Error message to include in parsing_warnings.
+
+        Returns:
+            ParsedCase with confidence 0.0 and the error message.
+        """
         return ParsedCase(
             raw_date=None,
             episode_id=None,
@@ -562,7 +598,7 @@ class CaseProcessor:
 
     def _parse_row_metadata(
         self,
-        row: Mapping[Hashable, Any],
+        row: Mapping[Hashable, Scalar],
         all_warnings: list[str],
         prepared: _PreparedRow | None = None,
     ) -> _ParsedRowMetadata:
@@ -595,7 +631,7 @@ class CaseProcessor:
             if prepared is not None
             else self._split_services(row.get(self.column_map.services))
         )
-        procedure_text = row.get(self.column_map.procedure)
+        procedure_text = self._optional_str(row.get(self.column_map.procedure))
         procedure_category, proc_warnings = (
             (prepared.procedure_category, prepared.procedure_warnings)
             if prepared is not None
@@ -622,7 +658,7 @@ class CaseProcessor:
         notes: Scalar,
         metadata: _ParsedRowMetadata,
         all_warnings: list[str],
-        all_findings: list[Any],
+        all_findings: list[ExtractionFinding],
         confidence_scores: list[float],
     ) -> _ExtractionResult:
         """Extract findings from notes/procedure text and infer anesthesia type.
@@ -631,7 +667,8 @@ class CaseProcessor:
         text so technique signals present only in the scheduled procedure are
         still captured.
         """
-        airway_mgmt, airway_findings = extract_airway_management(notes)
+        notes_str = self._optional_str(notes)
+        airway_mgmt, airway_findings = extract_airway_management(notes_str)
         self._extend_findings(airway_findings, all_findings, confidence_scores)
 
         anesthesia_type, infer_warnings = self._infer_anesthesia_type(
@@ -639,14 +676,14 @@ class CaseProcessor:
             airway_mgmt,
             metadata.procedure_text,
             metadata.procedure_category,
-            notes,
+            notes_str,
         )
         all_warnings.extend(infer_warnings)
 
-        vascular_access, vascular_findings = extract_vascular_access(notes)
+        vascular_access, vascular_findings = extract_vascular_access(notes_str)
         self._extend_findings(vascular_findings, all_findings, confidence_scores)
 
-        monitoring, monitoring_findings = extract_monitoring(notes)
+        monitoring, monitoring_findings = extract_monitoring(notes_str)
         self._extend_findings(monitoring_findings, all_findings, confidence_scores)
 
         if pd.notna(metadata.procedure_text) and str(metadata.procedure_text).strip():
@@ -667,7 +704,7 @@ class CaseProcessor:
 
     def process_row(
         self,
-        row: Mapping[Hashable, Any],
+        row: Mapping[Hashable, Scalar],
         prepared: _PreparedRow | None = None,
     ) -> ParsedCase:
         """Process a single row into a typed ParsedCase.
@@ -684,7 +721,7 @@ class CaseProcessor:
         """
         try:
             all_warnings: list[str] = []
-            all_findings: list[Any] = []
+            all_findings: list[ExtractionFinding] = []
             confidence_scores: list[float] = []
 
             metadata = self._parse_row_metadata(row, all_warnings, prepared=prepared)
@@ -709,7 +746,8 @@ class CaseProcessor:
             return ParsedCase(
                 raw_date=self._optional_str(row.get(self.column_map.date)),
                 episode_id=self._trimmed_optional_str(
-                    row.get(self.column_map.episode_id), max_length=25
+                    row.get(self.column_map.episode_id),
+                    max_length=_EPISODE_ID_MAX_LENGTH,
                 ),
                 raw_age=self._optional_float(row.get(self.column_map.age)),
                 raw_asa=self._optional_str(metadata.raw_asa),
@@ -747,8 +785,8 @@ class CaseProcessor:
 
     def _parse_asa_fields(
         self,
-        row: Mapping[Hashable, Any],
-    ) -> tuple[str, bool, Any, list[str]]:
+        row: Mapping[Hashable, Scalar],
+    ) -> tuple[str, bool, Scalar | None, list[str]]:
         """Return normalized ASA data and any warnings."""
         # Handle ASA with emergent flag
         warnings: list[str] = []
@@ -762,7 +800,7 @@ class CaseProcessor:
         return asa_str, emergent, raw_asa, warnings
 
     def _prepare_rows(
-        self, rows: Sequence[Mapping[Hashable, Any]]
+        self, rows: Sequence[Mapping[Hashable, Scalar]]
     ) -> list[_PreparedRow]:
         """Precompute per-row metadata for a dataframe batch.
 
@@ -805,7 +843,7 @@ class CaseProcessor:
             )
         return prepared_rows
 
-    def _prepare_dates(self, values: list[Any]) -> list[tuple[datetime, list[str]]]:
+    def _prepare_dates(self, values: list[Scalar]) -> list[tuple[datetime, list[str]]]:
         """Parse many dates at once while preserving row-level warnings.
 
         Successful parses are normalized to UTC-aware datetimes so batched
@@ -861,20 +899,19 @@ class CaseProcessor:
         """Return whether large-batch process chunking is worth attempting."""
         return (
             workers > 1
-            and row_count >= _PROCESS_POOL_MIN_ROWS
+            and row_count >= self._process_pool_min_rows
             and self.classifier.ml_predictor is not None
             and _get_process_pool_context() is not None
         )
 
-    @staticmethod
-    def _build_chunk_spans(row_count: int) -> list[tuple[int, int]]:
+    def _build_chunk_spans(self, row_count: int) -> list[tuple[int, int]]:
         """Split a large dataframe into balanced process-pool chunk spans."""
         if row_count <= 0:
             return []
 
         chunk_count = max(
             1,
-            math.ceil(row_count / _PROCESS_POOL_TARGET_CHUNK_ROWS),
+            math.ceil(row_count / self._process_pool_target_chunk_rows),
         )
         chunk_size = math.ceil(row_count / chunk_count)
         return [
@@ -916,6 +953,8 @@ class CaseProcessor:
                         self.default_year,
                         self._use_ml,
                         self._ml_threshold,
+                        self._process_pool_min_rows,
+                        self._process_pool_target_chunk_rows,
                     ),
                 ) as executor:
                     chunk_results = list(
@@ -967,11 +1006,10 @@ class CaseProcessor:
         if self._should_use_process_pool(len(df), workers):
             try:
                 processed_cases = self._process_rows_in_process_chunks(df, workers)
-            except Exception as e:
+            except Exception:
                 logger.exception(
-                    "Process chunk execution failed; "
-                    "falling back to in-process row handling: %s",
-                    e,
+                    "Process chunk execution failed (falling back to in-process row handling). "
+                    "This may indicate memory or parallelization issues",
                 )
             else:
                 logger.info("Successfully processed %d cases", len(processed_cases))
@@ -980,10 +1018,10 @@ class CaseProcessor:
         rows = df.to_dict(orient="records")
         try:
             prepared_rows: list[_PreparedRow | None] = [*self._prepare_rows(rows)]
-        except Exception as e:
+        except Exception:
             logger.exception(
-                "Batch row preparation failed; falling back to per-row processing: %s",
-                e,
+                "Batch row preparation failed (falling back to per-row processing). "
+                "Row validation may have encountered unexpected data",
             )
             prepared_rows = [None for _ in rows]
         processed_cases: list[ParsedCase] = []
