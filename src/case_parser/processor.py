@@ -354,7 +354,7 @@ class CaseProcessor:
         Returns:
             True if the value indicates an emergency case, False otherwise.
         """
-        if pd.isna(value):
+        if is_missing_scalar(value):
             return False
         return str(value).strip().upper() in {"E", "Y", "YES", "TRUE", "1"}
 
@@ -389,8 +389,10 @@ class CaseProcessor:
                 ["Inferred general anesthesia from airway management findings"],
             )
 
-        procedure_upper = "" if pd.isna(procedure_text) else str(procedure_text).upper()
-        notes_upper = "" if pd.isna(notes) else str(notes).upper()
+        procedure_upper = (
+            "" if is_missing_scalar(procedure_text) else str(procedure_text).upper()
+        )
+        notes_upper = "" if is_missing_scalar(notes) else str(notes).upper()
         if any(keyword in notes_upper for keyword in MAC_NOTE_KEYWORDS):
             return (
                 AnesthesiaType.MAC,
@@ -442,7 +444,7 @@ class CaseProcessor:
         """
         if confidence_scores:
             return sum(confidence_scores) / len(confidence_scores), []
-        if pd.isna(notes) or not str(notes).strip():
+        if is_missing_scalar(notes) or not str(notes).strip():
             return 0.7, ["No procedure notes available for extraction"]
         return 0.9, []
 
@@ -459,14 +461,14 @@ class CaseProcessor:
     @staticmethod
     def _split_services(raw_services: Scalar) -> list[str]:
         """Split a multiline services field into normalized items."""
-        if pd.isna(raw_services):
+        if is_missing_scalar(raw_services):
             return []
         return [item.strip() for item in str(raw_services).split("\n") if item.strip()]
 
     @staticmethod
     def _optional_str(value: Scalar) -> str | None:
         """Convert non-null values to string and preserve nulls as None."""
-        if pd.isna(value):
+        if is_missing_scalar(value):
             return None
         return str(value)
 
@@ -481,7 +483,7 @@ class CaseProcessor:
     @staticmethod
     def _optional_float(value: Scalar) -> float | None:
         """Convert non-null values to float, preserving nulls."""
-        if pd.isna(value):
+        if is_missing_scalar(value):
             return None
         try:
             return float(str(value).strip())
@@ -491,7 +493,7 @@ class CaseProcessor:
     @staticmethod
     def _clean_provider_name(value: Scalar) -> str | None:
         """Normalize provider names when present."""
-        if pd.isna(value):
+        if is_missing_scalar(value):
             return None
         return clean_names(value)
 
@@ -791,7 +793,7 @@ class CaseProcessor:
         # Handle ASA with emergent flag
         warnings: list[str] = []
         raw_asa = row.get(self.column_map.asa)
-        asa_str = "" if pd.isna(raw_asa) else str(raw_asa)
+        asa_str = "" if is_missing_scalar(raw_asa) else str(raw_asa)
         emergent = self.normalize_emergent_flag(row.get(self.column_map.emergent))
 
         if emergent and "E" not in asa_str.upper():

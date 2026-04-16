@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from ..types import Scalar
 from ..utils import clean_text
@@ -12,6 +12,9 @@ from .config import SERVICE_COLUMN_CANDIDATES
 
 if TYPE_CHECKING:
     from pandas import DataFrame
+
+
+T = TypeVar("T", bound=Scalar | list[Scalar])
 
 
 @dataclass(frozen=True)
@@ -122,8 +125,8 @@ def build_feature_inputs(
         FeatureInput(
             procedure_text=clean_text(procedure_text),
             service_text=coerce_service_text(service_text),
-            rule_category=clean_text(rule_category),  # type: ignore[arg-type]
-            rule_warning_count=parse_int(rule_warning_count),  # type: ignore[arg-type]
+            rule_category=clean_text(rule_category),
+            rule_warning_count=parse_int(rule_warning_count),
         )
         for procedure_text, service_text, rule_category, rule_warning_count in zip(
             procedure_texts,
@@ -151,13 +154,13 @@ def resolve_service_column(
     return None
 
 
-def _normalize_parallel_values(
+def _normalize_parallel_values[T: Scalar | list[Scalar]](
     *,
     name: str,
-    values: Sequence[Scalar | list[Scalar]] | None,
-    default_value: str | int,
+    values: Sequence[T] | None,
+    default_value: T,
     expected_length: int,
-) -> Sequence[Scalar | list[Scalar]]:
+) -> Sequence[T]:
     """Validate optional parallel metadata sequences against procedure count."""
     if values is None:
         return [default_value for _ in range(expected_length)]

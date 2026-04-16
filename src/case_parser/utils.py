@@ -6,6 +6,7 @@ from .types import Scalar
 
 LRU_CACHE_SIZE = 32768
 _MISSING_TEXT_SENTINELS = {"", "<NA>", "nan", "NaN", "None"}
+_NORMALIZED_SENTINELS = {s.strip("<>").casefold() for s in _MISSING_TEXT_SENTINELS}
 
 
 def normalize_stem(name: str) -> str:
@@ -49,6 +50,6 @@ def clean_text(value: Scalar | None) -> str:
     if value is None:
         return ""
     text = str(value).strip()
-    if text in _MISSING_TEXT_SENTINELS:
+    if text.strip("<>").casefold() in _NORMALIZED_SENTINELS:
         return ""
     return text

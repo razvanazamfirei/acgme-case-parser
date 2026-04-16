@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from math import isnan
 from numbers import Real
 
@@ -10,7 +11,7 @@ import pandas as pd
 
 # Scalar values from pandas DataFrames, Excel cells, or dict lookups.
 # pd.NA/pd.NaT are handled via pd.isna() at runtime.
-type Scalar = str | int | float | bool | None
+type Scalar = str | int | float | bool | datetime | pd.Timestamp | None
 
 # Raw services field: single string, sequence of strings, or null.
 type ServicesInput = str | Sequence[str] | None

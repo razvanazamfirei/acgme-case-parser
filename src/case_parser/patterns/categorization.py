@@ -12,8 +12,6 @@ from collections.abc import Sequence
 from functools import lru_cache
 from itertools import starmap
 
-import pandas as pd
-
 from ..domain import ProcedureCategory
 from ..types import is_missing_scalar
 from ..utils import LRU_CACHE_SIZE
@@ -374,7 +372,7 @@ def categorize_procedures(
 
 def _normalize_procedure_text(procedure: str | None) -> str:
     """Normalize optional procedure text to uppercase for caching."""
-    if pd.isna(procedure):
+    if is_missing_scalar(procedure):
         return ""
     return str(procedure).upper()
 

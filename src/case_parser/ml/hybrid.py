@@ -304,7 +304,9 @@ class HybridClassifier:
             return ClassificationResult(
                 category=rule_category,
                 method="rules",
-                confidence=0.8 if rule_warnings else 1.0,
+                confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                if rule_warnings
+                else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                 alternative=None,
                 warnings=[
                     *rule_warnings,
@@ -359,7 +361,9 @@ class HybridClassifier:
             return ClassificationResult(
                 category=rule_category,
                 method="rules",
-                confidence=0.8 if rule_warnings else 1.0,
+                confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                if rule_warnings
+                else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                 alternative=ml_category,
                 warnings=warnings,
             )
@@ -397,7 +401,9 @@ class HybridClassifier:
         return ClassificationResult(
             category=rule_category,
             method="rules",
-            confidence=0.8 if rule_warnings else 1.0,
+            confidence=RULES_CONFIDENCE_WITH_WARNINGS
+            if rule_warnings
+            else RULES_CONFIDENCE_WITHOUT_WARNINGS,
             alternative=None,
             warnings=rule_warnings,
         )
