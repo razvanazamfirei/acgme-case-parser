@@ -688,7 +688,7 @@ class CaseProcessor:
         monitoring, monitoring_findings = extract_monitoring(notes_str)
         self._extend_findings(monitoring_findings, all_findings, confidence_scores)
 
-        if pd.notna(metadata.procedure_text) and str(metadata.procedure_text).strip():
+        if not is_missing_scalar(metadata.procedure_text) and str(metadata.procedure_text).strip():
             procedure_monitoring, procedure_findings = extract_monitoring(
                 metadata.procedure_text, source_field="procedure"
             )

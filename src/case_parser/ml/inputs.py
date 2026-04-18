@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from ..types import Scalar
 from ..utils import clean_text
@@ -12,9 +12,6 @@ from .config import SERVICE_COLUMN_CANDIDATES
 
 if TYPE_CHECKING:
     from pandas import DataFrame
-
-
-T = TypeVar("T", bound=Scalar | list[Scalar])
 
 
 @dataclass(frozen=True)

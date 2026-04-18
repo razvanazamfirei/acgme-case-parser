@@ -5,7 +5,7 @@ from __future__ import annotations
 from .types import Scalar
 
 LRU_CACHE_SIZE = 32768
-_MISSING_TEXT_SENTINELS = {"", "<NA>", "nan", "NaN", "None"}
+_MISSING_TEXT_SENTINELS = {"", "<NA>", "nan", "NaN", "None", "NaT"}
 _NORMALIZED_SENTINELS = {s.strip("<>").casefold() for s in _MISSING_TEXT_SENTINELS}
 
 
