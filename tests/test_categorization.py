@@ -229,6 +229,12 @@ class TestFallbackCategoriesFromText:
         )
         assert categories == []
 
+    def test_thyroid_lobectomy_does_not_match_intrathoracic_rule(self):
+        categories = _fallback_categories_from_text(
+            "TOTAL THYROID LOBECTOMY UNI W/WO IS THMUSECTOMY"
+        )
+        assert categories == []
+
 
 class TestCategorizeProcedure:
     def test_none_procedure_returns_other(self):
@@ -273,6 +279,14 @@ class TestCategorizeProcedure:
             "Something random", ["UNKNOWN_SERVICE"]
         )
         assert category == ProcedureCategory.OTHER
+
+    def test_thyroid_lobectomy_without_service_is_other(self):
+        category, warnings = categorize_procedure(
+            "TOTAL THYROID LOBECTOMY UNI W/WO IS THMUSECTOMY",
+            [],
+        )
+        assert category == ProcedureCategory.OTHER
+        assert warnings == []
 
     def test_non_ob_service_does_not_create_obgyn_warning(self):
         category, warnings = categorize_procedure(
