@@ -25,6 +25,7 @@ from ..patterns.procedure_patterns import (
     VASCULAR_SERVICE_HINT_KEYWORDS,
 )
 from ..types import Scalar
+from ..utils import LRU_CACHE_SIZE
 from .inputs import FeatureInput, normalize_feature_inputs
 
 _T = TypeVar("_T")
@@ -175,7 +176,7 @@ class FeatureExtractor:
         return unique_features[inverse_indices]
 
     @staticmethod
-    @lru_cache(maxsize=32768)
+    @lru_cache(maxsize=LRU_CACHE_SIZE)
     def _extract_structured_single_v2_cached(
         procedure_text: str,
         service_text: str,

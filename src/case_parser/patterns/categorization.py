@@ -8,15 +8,13 @@ function that encapsulates the specific rules for that type.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import starmap
-from numbers import Real
-
-import pandas as pd
 
 from ..domain import ProcedureCategory
+from ..types import is_missing_scalar
+from ..utils import LRU_CACHE_SIZE
 from .approach_patterns import detect_approach, detect_intracerebral_pathology
 from .procedure_patterns import (
     DEFAULT_PROCEDURE_CATEGORY,
@@ -374,25 +372,16 @@ def categorize_procedures(
 
 def _normalize_procedure_text(procedure: str | None) -> str:
     """Normalize optional procedure text to uppercase for caching."""
-    if pd.isna(procedure):
+    if is_missing_scalar(procedure):
         return ""
     return str(procedure).upper()
-
-
-def _is_missing_service_scalar(service: str | float | int | None) -> bool:
-    """Return True when a raw services input is a scalar null sentinel."""
-    if service is None or service is pd.NA or service is pd.NaT:
-        return True
-    if isinstance(service, Real):
-        return math.isnan(float(service))
-    return False
 
 
 def _normalize_services(
     services: str | Sequence[str | float | None] | None,
 ) -> tuple[str, ...]:
     """Normalize raw service values to uppercase immutable tuples for caching."""
-    if _is_missing_service_scalar(services):
+    if is_missing_scalar(services):
         return ()
 
     raw_services: Sequence[object] | tuple[object, ...]
@@ -405,7 +394,7 @@ def _normalize_services(
 
     normalized: list[str] = []
     for service in raw_services:
-        if _is_missing_service_scalar(service):
+        if is_missing_scalar(service):
             continue
 
         service_text = str(service).strip().upper()
@@ -414,7 +403,7 @@ def _normalize_services(
     return tuple(normalized)
 
 
-@lru_cache(maxsize=32768)
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def _categorize_procedure_cached(
     procedure_text: str,
     services: tuple[str, ...],
