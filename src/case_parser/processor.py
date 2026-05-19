@@ -58,6 +58,21 @@ _GENERIC_PERIPHERAL_BLOCK_SITE = "Other - peripheral nerve blockade site"
 _PROCESS_POOL_MIN_ROWS_DEFAULT = 25_000
 _PROCESS_POOL_TARGET_CHUNK_ROWS_DEFAULT = 12_500
 
+
+def _resolve_process_pool_setting(
+    value: int | None,
+    *,
+    name: str,
+    default: int,
+) -> int:
+    """Return a validated process-pool setting or the module default."""
+    if value is None:
+        return default
+    if type(value) is not int or value < 1:
+        raise ValueError(f"{name} must be an integer >= 1, got {value!r}")
+    return value
+
+
 # Multiprocessing state for fork-based worker initialization.
 # Required because ProcessPoolExecutor uses fork() and workers cannot receive
 # complex objects directly - they inherit the parent's memory space.
@@ -181,15 +196,15 @@ class CaseProcessor:
         self.default_year = default_year
         self._use_ml = use_ml
         self._ml_threshold = ml_threshold
-        self._process_pool_min_rows = (
-            process_pool_min_rows
-            if process_pool_min_rows is not None
-            else _PROCESS_POOL_MIN_ROWS_DEFAULT
+        self._process_pool_min_rows = _resolve_process_pool_setting(
+            process_pool_min_rows,
+            name="process_pool_min_rows",
+            default=_PROCESS_POOL_MIN_ROWS_DEFAULT,
         )
-        self._process_pool_target_chunk_rows = (
-            process_pool_target_chunk_rows
-            if process_pool_target_chunk_rows is not None
-            else _PROCESS_POOL_TARGET_CHUNK_ROWS_DEFAULT
+        self._process_pool_target_chunk_rows = _resolve_process_pool_setting(
+            process_pool_target_chunk_rows,
+            name="process_pool_target_chunk_rows",
+            default=_PROCESS_POOL_TARGET_CHUNK_ROWS_DEFAULT,
         )
 
         # Initialize hybrid classifier

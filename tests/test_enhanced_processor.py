@@ -1124,8 +1124,11 @@ class TestProcessDataframeExtended:
 
         assert len(cases) == 1
         assert cases[0].episode_id == "12345"
-        assert caplog.records[-1].levelname == "ERROR"
-        assert "falling back to in-process row handling" in caplog.text
+        assert any(
+            record.levelname == "ERROR"
+            and "falling back to in-process row handling" in record.message
+            for record in caplog.records
+        )
 
     def test_batch_prepared_dates_preserve_case_dates_and_warnings(self, processor):
         df = pd.DataFrame([

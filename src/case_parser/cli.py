@@ -711,11 +711,12 @@ def _collect_trace_matches(
 ) -> list[dict[str, Any]]:
     """Internal helper to gather rule matches for debugging."""
     trace_matches = []
+    resolved_procedure_text = procedure_text or ""
 
     # 1. Match Services
     service_matches = _trace_match_rules(
         list(normalized_services),
-        procedure_text,
+        resolved_procedure_text,
         PROCEDURE_RULES,
         exclude_in_values=True,
     )
@@ -728,7 +729,7 @@ def _collect_trace_matches(
     )
     if has_obstetric_service:
         obgyn_category = categorize_obgyn_text(
-            procedure_text,
+            resolved_procedure_text,
             allow_generic_neuraxial=True,
         )
         if obgyn_category != ProcedureCategory.OTHER:
