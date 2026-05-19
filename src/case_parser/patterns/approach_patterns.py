@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from ..utils import LRU_CACHE_SIZE
+
 # Keywords indicating ENDOVASCULAR/PERCUTANEOUS approach
 ENDOVASCULAR_KEYWORDS = (
     "ENDOVASCULAR",
@@ -103,7 +105,7 @@ def detect_approach(procedure_text: str | None) -> str:
     return _detect_approach_cached(str(procedure_text).upper())
 
 
-@lru_cache(maxsize=32768)
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def _detect_approach_cached(text_upper: str) -> str:  # noqa: PLR0911
     """Cached implementation for approach detection."""
     if not text_upper:
@@ -149,7 +151,7 @@ def detect_intracerebral_pathology(procedure_text: str | None) -> str:
     return _detect_intracerebral_pathology_cached(str(procedure_text).upper())
 
 
-@lru_cache(maxsize=32768)
+@lru_cache(maxsize=LRU_CACHE_SIZE)
 def _detect_intracerebral_pathology_cached(text_upper: str) -> str:
     """Cached implementation for intracerebral pathology detection."""
     if not text_upper:

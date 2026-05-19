@@ -16,6 +16,10 @@ SERVICE_LIST_LENGTH_MISMATCH_MSG = (
     "services_list must match procedure_texts length in classify_many"
 )
 
+HIGH_CONFIDENCE_ML_OVERRIDE_THRESHOLD = 0.85
+RULES_CONFIDENCE_WITH_WARNINGS = 0.8
+RULES_CONFIDENCE_WITHOUT_WARNINGS = 1.0
+
 
 class MLPredictorLike(Protocol):
     """Structural contract used by the hybrid classifier at inference time."""
@@ -26,7 +30,19 @@ class MLPredictorLike(Protocol):
         services: list[str] | None = None,
         rule_category: str | None = None,
         rule_warning_count: int = 0,
-    ) -> tuple[str, float]: ...
+    ) -> tuple[str, float]:
+        """Predict a single category with confidence score.
+
+        Args:
+            procedure_text: Procedure description text.
+            services: Optional list of service names.
+            rule_category: Optional rule-based category hint.
+            rule_warning_count: Number of warnings from rule-based classification.
+
+        Returns:
+            Tuple of (predicted_category, confidence).
+        """
+        ...
 
     def predict_with_confidence_many(
         self,
@@ -34,7 +50,19 @@ class MLPredictorLike(Protocol):
         services_list: list[list[str]] | None = None,
         rule_categories: list[str] | None = None,
         rule_warning_counts: list[int] | None = None,
-    ) -> tuple[Sequence[str], list[float]]: ...
+    ) -> tuple[Sequence[str], list[float]]:
+        """Predict multiple categories with confidence scores.
+
+        Args:
+            procedure_texts: List of procedure description texts.
+            services_list: Optional list of service name lists per procedure.
+            rule_categories: Optional rule-based category hints per procedure.
+            rule_warning_counts: Number of warnings per procedure.
+
+        Returns:
+            Tuple of (predicted_categories, confidences).
+        """
+        ...
 
 
 class ClassificationResult(TypedDict):
@@ -61,7 +89,7 @@ class HybridClassifier:
     """Hybrid classifier using both rule-based and ML approaches.
 
     Decision logic:
-    - If ML confidence >= 0.85: use ML (high confidence override)
+    - If ML confidence >= HIGH_CONFIDENCE_ML_OVERRIDE_THRESHOLD (0.85): use ML
     - If ML confidence >= threshold (default runtime threshold): prefer ML
       and keep rules
       as fallback metadata
@@ -188,7 +216,9 @@ class HybridClassifier:
                 ClassificationResult(
                     category=rule_context.category,
                     method="rules",
-                    confidence=0.8 if rule_context.warnings else 1.0,
+                    confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                    if rule_context.warnings
+                    else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                     alternative=None,
                     warnings=rule_context.warnings,
                 )
@@ -250,7 +280,9 @@ class HybridClassifier:
             return ClassificationResult(
                 category=rule_category,
                 method="rules",
-                confidence=0.8 if rule_warnings else 1.0,
+                confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                if rule_warnings
+                else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                 alternative=None,
                 warnings=rule_warnings,
             )
@@ -272,7 +304,9 @@ class HybridClassifier:
             return ClassificationResult(
                 category=rule_category,
                 method="rules",
-                confidence=0.8 if rule_warnings else 1.0,
+                confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                if rule_warnings
+                else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                 alternative=None,
                 warnings=[
                     *rule_warnings,
@@ -281,7 +315,7 @@ class HybridClassifier:
             )
 
         # High confidence ML override
-        if ml_confidence >= 0.85:
+        if ml_confidence >= HIGH_CONFIDENCE_ML_OVERRIDE_THRESHOLD:
             warnings = rule_warnings.copy()
             if ml_category != rule_category:
                 warnings.append(
@@ -327,7 +361,9 @@ class HybridClassifier:
             return ClassificationResult(
                 category=rule_category,
                 method="rules",
-                confidence=0.8 if rule_warnings else 1.0,
+                confidence=RULES_CONFIDENCE_WITH_WARNINGS
+                if rule_warnings
+                else RULES_CONFIDENCE_WITHOUT_WARNINGS,
                 alternative=ml_category,
                 warnings=warnings,
             )
@@ -365,7 +401,9 @@ class HybridClassifier:
         return ClassificationResult(
             category=rule_category,
             method="rules",
-            confidence=0.8 if rule_warnings else 1.0,
+            confidence=RULES_CONFIDENCE_WITH_WARNINGS
+            if rule_warnings
+            else RULES_CONFIDENCE_WITHOUT_WARNINGS,
             alternative=None,
             warnings=rule_warnings,
         )

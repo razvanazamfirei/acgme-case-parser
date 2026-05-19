@@ -39,11 +39,11 @@ from .models import (
 )
 from .patterns.categorization import (
     OBGYN_SERVICE_KEYWORDS,
-    _apply_rule_category,
-    _categorize_obgyn_text,
-    _normalize_categorization_request,
-    _resolve_category_result,
+    apply_rule_category,
     categorize_obgyn,
+    categorize_obgyn_text,
+    normalize_categorization_request,
+    resolve_category_result,
 )
 from .patterns.procedure_patterns import (
     PROCEDURE_RULES,
@@ -616,7 +616,7 @@ def _trace_match_rules(
                 continue
 
             # If we reach here, it's a match
-            category = _apply_rule_category(rule.category, procedure_text)
+            category = apply_rule_category(rule.category, procedure_text)
 
             if category not in seen_categories:
                 seen_categories.add(category)
@@ -711,11 +711,12 @@ def _collect_trace_matches(
 ) -> list[dict[str, Any]]:
     """Internal helper to gather rule matches for debugging."""
     trace_matches = []
+    resolved_procedure_text = procedure_text or ""
 
     # 1. Match Services
     service_matches = _trace_match_rules(
         list(normalized_services),
-        procedure_text,
+        resolved_procedure_text,
         PROCEDURE_RULES,
         exclude_in_values=True,
     )
@@ -727,8 +728,8 @@ def _collect_trace_matches(
         for service in normalized_services
     )
     if has_obstetric_service:
-        obgyn_category = _categorize_obgyn_text(
-            procedure_text,
+        obgyn_category = categorize_obgyn_text(
+            resolved_procedure_text,
             allow_generic_neuraxial=True,
         )
         if obgyn_category != ProcedureCategory.OTHER:
@@ -795,7 +796,7 @@ def handle_debug_categorize(
 ) -> None:
     """Run categorization with detailed tracing and display results."""
     # Normalize inputs
-    procedure_text, normalized_services = _normalize_categorization_request(
+    procedure_text, normalized_services = normalize_categorization_request(
         procedure, services_input
     )
 
@@ -818,7 +819,7 @@ def handle_debug_categorize(
 
     # Final Result
     categories = [m["category"] for m in trace_matches]
-    final_category, warnings = _resolve_category_result(categories, normalized_services)
+    final_category, warnings = resolve_category_result(categories, normalized_services)
 
     if not bug_track:
         result_style = (
