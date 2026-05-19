@@ -150,7 +150,7 @@ def categorize_intracerebral(procedure_text: str) -> ProcedureCategory:
     return ProcedureCategory.INTRACEREBRAL_NONVASCULAR_OPEN
 
 
-def _categorize_obgyn_text(
+def categorize_obgyn_text(
     procedure_text: str,
     *,
     allow_generic_neuraxial: bool = False,
@@ -185,7 +185,7 @@ def categorize_obgyn(procedure_text: str) -> ProcedureCategory:
     Returns:
         ProcedureCategory for OB/GYN subtype
     """
-    return _categorize_obgyn_text(procedure_text)
+    return categorize_obgyn_text(procedure_text)
 
 
 def _match_rules(
@@ -206,7 +206,7 @@ def _match_rules(
                 for excl in rule.exclude_keywords
             ):
                 continue
-            category = _apply_rule_category(rule.category, procedure_text)
+            category = apply_rule_category(rule.category, procedure_text)
             _append_unique_category(categories, category)
             break
     return categories
@@ -237,7 +237,7 @@ def _match_services_to_categories(
         for service in services
     )
     if has_obstetric_service:
-        obgyn_category = _categorize_obgyn_text(
+        obgyn_category = categorize_obgyn_text(
             procedure_text,
             allow_generic_neuraxial=True,
         )
@@ -285,7 +285,7 @@ def _collect_candidate_categories(
     return _fallback_categories_from_text(procedure_text)
 
 
-def _resolve_category_result(
+def resolve_category_result(
     categories: list[ProcedureCategory],
     services: tuple[str, ...],
 ) -> tuple[ProcedureCategory, tuple[str, ...]]:
@@ -304,7 +304,7 @@ def _resolve_category_result(
     return categories[0], (warning,)
 
 
-def _normalize_categorization_request(
+def normalize_categorization_request(
     procedure: str | None,
     services: str | Sequence[str | float | None] | None,
 ) -> tuple[str, tuple[str, ...]]:
@@ -349,7 +349,7 @@ def categorize_procedure(
         Tuple of (ProcedureCategory, warnings_list)
     """
     return _categorize_normalized_requests([
-        _normalize_categorization_request(procedure, services)
+        normalize_categorization_request(procedure, services)
     ])[0]
 
 
@@ -363,7 +363,7 @@ def categorize_procedures(
 
     normalized_requests = list(
         starmap(
-            _normalize_categorization_request,
+            normalize_categorization_request,
             zip(procedures, services_list, strict=True),
         )
     )
@@ -410,10 +410,10 @@ def _categorize_procedure_cached(
 ) -> tuple[ProcedureCategory, tuple[str, ...]]:
     """Cached implementation of categorize_procedure()."""
     categories = _collect_candidate_categories(procedure_text, services)
-    return _resolve_category_result(categories, services)
+    return resolve_category_result(categories, services)
 
 
-def _apply_rule_category(rule_category: str, procedure_text: str) -> ProcedureCategory:
+def apply_rule_category(rule_category: str, procedure_text: str) -> ProcedureCategory:
     """
     Apply surgery-specific categorization based on rule category.
 

@@ -15,9 +15,9 @@ from case_parser.patterns.approach_patterns import (
 
 # noinspection PyProtectedMember
 from case_parser.patterns.categorization import (
-    _apply_rule_category,
     _fallback_categories_from_text,
     _normalize_services,
+    apply_rule_category,
     categorize_cardiac,
     categorize_intracerebral,
     categorize_obgyn,
@@ -314,19 +314,19 @@ class TestCategorizeProcedure:
         assert categorize_procedures(procedures, services_list) == expected
 
     def test_apply_rule_category_cardiac(self):
-        result = _apply_rule_category("Cardiac", "OFF PUMP CABG")
+        result = apply_rule_category("Cardiac", "OFF PUMP CABG")
         assert result == ProcedureCategory.CARDIAC_WITHOUT_CPB
 
     def test_apply_rule_category_vascular(self):
-        result = _apply_rule_category("Procedures Major Vessels", "OPEN REPAIR")
+        result = apply_rule_category("Procedures Major Vessels", "OPEN REPAIR")
         assert result == ProcedureCategory.MAJOR_VESSELS_OPEN
 
     def test_apply_rule_category_intracerebral(self):
-        result = _apply_rule_category("Intracerebral", "ENDOVASCULAR COILING")
+        result = apply_rule_category("Intracerebral", "ENDOVASCULAR COILING")
         assert result == ProcedureCategory.INTRACEREBRAL_ENDOVASCULAR
 
     def test_apply_rule_category_intrathoracic(self):
-        result = _apply_rule_category("Intrathoracic non-cardiac", "LUNG RESECTION")
+        result = apply_rule_category("Intrathoracic non-cardiac", "LUNG RESECTION")
         assert result == ProcedureCategory.INTRATHORACIC_NON_CARDIAC
 
 

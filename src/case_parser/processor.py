@@ -688,7 +688,7 @@ class CaseProcessor:
         monitoring, monitoring_findings = extract_monitoring(notes_str)
         self._extend_findings(monitoring_findings, all_findings, confidence_scores)
 
-        if not is_missing_scalar(metadata.procedure_text) and str(metadata.procedure_text).strip():
+        if metadata.procedure_text and metadata.procedure_text.strip():
             procedure_monitoring, procedure_findings = extract_monitoring(
                 metadata.procedure_text, source_field="procedure"
             )
@@ -1010,7 +1010,8 @@ class CaseProcessor:
                 processed_cases = self._process_rows_in_process_chunks(df, workers)
             except Exception:
                 logger.exception(
-                    "Process chunk execution failed (falling back to in-process row handling). "
+                    "Process chunk execution failed (falling back to in-process "
+                    "row handling). "
                     "This may indicate memory or parallelization issues",
                 )
             else:
