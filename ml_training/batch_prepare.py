@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse
 import random
 import sys
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -127,6 +128,14 @@ def smart_sample_cases(
     n_high = min(len(high_value), int(target_size * 0.5))
     n_medium = min(len(medium_value), int(target_size * 0.3))
     n_low = min(len(low_value), target_size - n_high - n_medium)
+    remaining = target_size - n_high - n_medium - n_low
+    extra_high = min(len(high_value) - n_high, remaining)
+    n_high += extra_high
+    remaining -= extra_high
+    extra_medium = min(len(medium_value) - n_medium, remaining)
+    n_medium += extra_medium
+    remaining -= extra_medium
+    n_low += min(len(low_value) - n_low, remaining)
 
     random.seed(42)
     sampled = (
@@ -211,13 +220,8 @@ def _collect_cases(
         )
 
         with ProcessPoolExecutor(max_workers=workers) as executor:
-            futures = [
-                executor.submit(process_single_file, file_path, sample_per_file)
-                for file_path in csv_files
-            ]
-
-            for future in as_completed(futures):
-                result = future.result()
+            worker = partial(process_single_file, sample_size=sample_per_file)
+            for result in executor.map(worker, csv_files):
                 file_stats.append(result)
                 all_cases.extend(result.get("cases", []))
                 progress.advance(task_id)
@@ -268,6 +272,9 @@ def _save_sampled_dataset(
     sampled_df = pd.DataFrame(sampled_cases)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     sampled_df.to_csv(output_path, index=False)
+    if sampled_df.empty:
+        console.print(f"\n[yellow]Saved 0 cases to {output_path}[/yellow]")
+        return
 
     console.print(f"\n[green]Saved {len(sampled_cases)} cases to {output_path}[/green]")
 

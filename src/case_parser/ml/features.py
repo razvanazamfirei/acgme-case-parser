@@ -252,6 +252,9 @@ class FeatureExtractor:
             float(any(term in service_upper for term in OBGYN_SERVICE_KEYWORDS)),
             float(rule_warning_count),
             float(len(procedure_text) // 100),
+            # Rule-category indicators are hints for the hybrid path. They
+            # stay in the vector so existing pickles keep their feature
+            # width; do not treat them as a substitute for human labels.
             float("CARDIAC" in rule_category_upper or "CPB" in rule_category_upper),
             float("INTRACEREBRAL" in rule_category_upper),
             float("MAJOR VESSELS" in rule_category_upper),

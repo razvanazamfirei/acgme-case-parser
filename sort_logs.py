@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.13"
 # ///
 
 """Match and copy resident outputs based on a names list."""
@@ -20,7 +20,8 @@ def normalize_name(raw: str) -> list[str]:
 
     Args:
         raw: Full name string, optionally containing parenthetical suffixes
-            (e.g., ``"Jane A. Smith (Jones)"``) or quoted nicknames.
+            (e.g., ``"Jane A. Smith (Jones)"``) or quoted nicknames, and
+            optionally in ``"Last, First"`` order.
 
     Returns:
         List of candidate strings to try as lookup keys, from most specific
@@ -28,13 +29,20 @@ def normalize_name(raw: str) -> list[str]:
     """
     no_parens = re.sub(r"\s*\([^)]+\)", "", raw).strip()
     no_quotes = re.sub(r'\s*"[^"]+"\s*', " ", no_parens).strip()
-    words = no_quotes.split()
     candidates = [no_quotes]
+
+    search_base = no_quotes
+    if "," in no_quotes:
+        last, first = (part.strip() for part in no_quotes.split(",", 1))
+        search_base = f"{first} {last}"
+        candidates.append(search_base)
+
+    words = search_base.split()
     if len(words) >= 3:
         candidates.append(f"{words[0]} {words[-1]}")
     alternative = re.search(r"\(([^)]+)\)", raw)
     if alternative:
-        candidates.append(f"{alternative.group(1)} {no_quotes.split()[-1]}")
+        candidates.append(f"{alternative.group(1)} {search_base.split()[-1]}")
     return candidates
 
 
@@ -54,6 +62,10 @@ def _discover_available_entries(input_dir: Path) -> tuple[_EntryKind, dict[str, 
 def _copy_matched_output(entry_kind: _EntryKind, src: Path, output_dir: Path) -> None:
     """Copy one matched resident output into the destination directory."""
     target = output_dir / src.name
+    if src.resolve() == target.resolve():
+        raise ValueError(
+            f"Refusing to copy {src} onto itself; choose a different --output-dir"
+        )
     if entry_kind == "directory":
         if target.exists():
             shutil.rmtree(target)
@@ -113,6 +125,14 @@ def main() -> None:
 
     if not names_file.exists():
         print(f"Error: names file not found: {names_file}", file=sys.stderr)
+        sys.exit(1)
+
+    if input_dir.resolve() == output_dir.resolve():
+        print(
+            "Error: --output-dir must be different from --input-dir "
+            "(copying in place deletes the source folders)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     entry_kind, available = _discover_available_entries(input_dir)

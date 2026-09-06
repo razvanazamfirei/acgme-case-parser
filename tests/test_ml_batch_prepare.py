@@ -54,3 +54,27 @@ def test_process_single_file_uses_exported_service_text_for_rule_categorization(
     assert result["cases"][0]["rule_category"] == (
         ProcedureCategory.CARDIAC_WITH_CPB.value
     )
+
+
+def test_smart_sample_cases_reallocates_unused_high_quota():
+    cases = [
+        {
+            "procedure": f"case {index}",
+            "warnings": [],
+            "rule_category": "Other (procedure cat)",
+        }
+        for index in range(20)
+    ]
+    cases[0]["warnings"] = ["low confidence"]
+    cases[0]["rule_category"] = "Cardiac with CPB"
+    cases[0]["procedure"] = "CABG"
+
+    sampled = batch_prepare.smart_sample_cases(cases, target_size=10)
+
+    assert len(sampled) == 10
+
+
+def test_save_sampled_dataset_handles_empty_cases(tmp_path):
+    output_path = tmp_path / "empty.csv"
+    batch_prepare._save_sampled_dataset([], output_path)
+    assert output_path.exists()

@@ -40,7 +40,8 @@ INTUBATION_PATTERNS = [
     r"\bintubat(ed|ion|e)?\b",
     r"\bETT\b",
     r"\bendotrache(al)?\b",
-    r"\b(tube|ett)\s+(placed|inserted|exchanged)\b",
+    r"\b(endotracheal\s+)?ett\s+(placed|inserted|exchanged)\b",
+    r"\bendotracheal\s+tube\s+(placed|inserted|exchanged)\b",
     r"\bnasal\s+intubat",
     r"\boral\s+intubat",
 ]
@@ -100,8 +101,7 @@ BRONCHOSCOPY_PATTERNS = [
 # ============================================================================
 # Face mask ventilation (excludes LMA which is supraglottic)
 MASK_VENTILATION_PATTERNS = [
-    r"\bmask\b(?!.*\bLMA\b)",  # Mask but not LMA
-    r"\bmask\s+vent(ilation)?\b",
+    r"(?<!laryngeal\s)\bmask\s+vent(ilation)?\b",
     r"\bBVM\b",  # Bag-valve-mask
     r"\bbag[- ]?mask\b",
     r"\bface\s+mask\b",

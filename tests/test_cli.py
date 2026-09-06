@@ -13,12 +13,14 @@ import pandas as pd
 from case_parser.cli import (
     _ProcessingOptions,
     _ProcessingRequest,
+    _write_standalone_output,
     main,
     process_input,
     split_standalone_cases,
 )
 from case_parser.domain import ParsedCase, ProcedureCategory
 from case_parser.models import ColumnMap
+from case_parser.standalone_exports import BLOCKS_OUTPUT_SPEC
 
 
 def _standalone_case(  # noqa: PLR0913
@@ -123,6 +125,22 @@ def test_split_standalone_cases_uses_preserved_raw_block_text():
 
     assert [c.episode_id for c in block_cases] == ["B3"]
     assert neuraxial_cases == []
+
+
+def test_split_standalone_cases_does_not_treat_heart_block_as_nerve_block():
+    cases = [
+        _standalone_case(
+            case_id="N4",
+            procedure_name="Labor Epidural",
+            procedure="Labor epidural for vaginal delivery",
+            notes="History of complete heart block",
+        ),
+    ]
+
+    block_cases, neuraxial_cases, _unmatched = split_standalone_cases(cases)
+
+    assert block_cases == []
+    assert [c.episode_id for c in neuraxial_cases] == ["N4"]
 
 
 def test_split_standalone_cases_prefers_normalized_peripheral_block_over_text_hint():
@@ -233,3 +251,19 @@ def test_main_uses_standalone_signal_when_no_main_cases(tmp_path: Path):
         "standalone orphan outputs were written" in msg for msg in printed_messages
     )
     assert not any("No cases to process" in msg for msg in printed_messages)
+
+
+def test_write_standalone_output_removes_stale_workbook(tmp_path):
+    output_path = tmp_path / "resident.xlsx"
+    stale_path = tmp_path / "resident_blocks.xlsx"
+    stale_path.write_text("old", encoding="utf-8")
+
+    _write_standalone_output(
+        processor=Mock(),
+        excel_handler=Mock(),
+        output_path=output_path,
+        cases=[],
+        spec=BLOCKS_OUTPUT_SPEC,
+    )
+
+    assert not stale_path.exists()

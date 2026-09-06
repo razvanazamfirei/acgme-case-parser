@@ -61,7 +61,7 @@ OPEN_KEYWORDS = (
 VASCULAR_PATHOLOGY_KEYWORDS = (
     "ANEURYSM",
     "AVM",  # Arteriovenous Malformation
-    "ARTERIOVENOUS",
+    "ARTERIOVENOUS MALFORMATION",
     "VASCULAR MALFORMATION",
     "HEMORRHAGE",
     "BLEED",
@@ -173,7 +173,8 @@ def _detect_intracerebral_pathology_cached(text_upper: str) -> str:
         return "nonvascular"
 
     if "HEMATOMA" in text_upper and not any(
-        keyword in text_upper for keyword in ("ANEURYSM", "AVM", "ARTERIOVENOUS")
+        keyword in text_upper
+        for keyword in ("ANEURYSM", "AVM", "ARTERIOVENOUS MALFORMATION")
     ):
         return "nonvascular"
 

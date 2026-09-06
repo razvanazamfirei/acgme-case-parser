@@ -155,7 +155,7 @@ class TestHelperFunctions:
     def test_clean_names_trailing_comma(self):
         """Test removal of trailing commas."""
         assert clean_names("Smith, John,") == "Smith, John"
-        assert clean_names("Doe, Jane, MD,") == "Doe, Jane,"
+        assert clean_names("Doe, Jane, MD,") == "Doe, Jane"
 
     def test_clean_names_whitespace(self):
         """Test whitespace normalization."""
@@ -176,6 +176,12 @@ class TestHelperFunctions:
     def test_clean_names_preserves_literal_nan_string(self):
         """Literal string values like 'nan' should not be treated as missing."""
         assert clean_names("nan") == "nan"
+
+    def test_clean_names_preserves_surname_do(self):
+        """A leading DO token is a surname, not a credential."""
+        assert clean_names("DO, MINH") == "DO, MINH"
+        assert clean_names("Do, Minh MD") == "Do, Minh"
+        assert clean_names("NGUYEN, DO") == "NGUYEN, DO"
 
     @pytest.mark.parametrize("value", [None, pd.NA, float("nan")])
     def test_extract_attending_missing_value(self, value):
@@ -256,6 +262,21 @@ class TestAirwayManagementExtraction:
 
         assert AirwayManagement.MASK in airway
         assert any(f.value == AirwayManagement.MASK.value for f in findings)
+
+    def test_laryngeal_mask_is_not_face_mask(self):
+        airway, _findings = extract_airway_management("laryngeal mask airway")
+
+        assert AirwayManagement.SUPRAGLOTTIC_AIRWAY in airway
+        assert AirwayManagement.MASK not in airway
+
+    def test_chest_and_ng_tubes_are_not_oral_ett(self):
+        chest, _chest_findings = extract_airway_management("chest tube placed")
+        ng, _ng_findings = extract_airway_management("NG tube inserted")
+        ett, _ett_findings = extract_airway_management("ETT placed")
+
+        assert AirwayManagement.ORAL_ETT not in chest
+        assert AirwayManagement.ORAL_ETT not in ng
+        assert AirwayManagement.ORAL_ETT in ett
 
     def test_extract_difficult_airway(self):
         """Test difficult airway detection."""

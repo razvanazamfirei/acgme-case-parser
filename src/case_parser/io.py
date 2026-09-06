@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 _RESERVED_SHEET_NAMES = {"info", "_meta"}
 _CASE_LEVEL_TECHNIQUE_MIN_RANK = 2
 DEFAULT_ORPHAN_AGE = 30
+# Case-insensitive lookup so source data casing variants (e.g. "Intubation
+# Routine" vs "Intubation routine") still rank correctly.
+_TECHNIQUE_RANK_CASEFOLD = {
+    name.casefold(): rank for name, rank in TECHNIQUE_RANK.items()
+}
 
 
 def _combine_non_empty_text(*values: Scalar) -> str | None:
@@ -88,7 +93,15 @@ def _empty_procedure_aggregate() -> DataFrame:
 
 
 def _aggregate_case_procedures(matched_procs: DataFrame) -> DataFrame:
-    """Reduce matched ProcedureList rows to one primary procedure per case."""
+    """Reduce matched ProcedureList rows to one primary procedure per case.
+
+    Also aggregates every row's procedure text (ProcedureName, Comment,
+    Details) across all ProcedureList rows for a case into
+    ``Procedure_Notes_All``, so techniques logged on non-primary rows (e.g.
+    an arterial line or PA catheter row alongside an intubation row) still
+    reach procedure_notes for extraction, even though only the highest-ranked
+    technique becomes the case's Airway_Type.
+    """
     if matched_procs.empty:
         return _empty_procedure_aggregate()
 
@@ -106,8 +119,23 @@ def _aggregate_case_procedures(matched_procs: DataFrame) -> DataFrame:
         return _empty_procedure_aggregate()
 
     ranked_procs["_technique_rank"] = (
-        ranked_procs["ProcedureName"].map(TECHNIQUE_RANK).fillna(0)
+        ranked_procs["ProcedureName"]
+        .str.casefold()
+        .map(_TECHNIQUE_RANK_CASEFOLD)
+        .fillna(0)
     )
+    ranked_procs["_row_text"] = _combine_text_columns(
+        ranked_procs["ProcedureName"],
+        _column_or_default(ranked_procs, "Comment"),
+        _column_or_default(ranked_procs, "Details"),
+    )
+    all_procedure_text = (
+        ranked_procs
+        .groupby("MPOG_Case_ID")["_row_text"]
+        .agg(lambda texts: _combine_non_empty_text(*texts))
+        .rename("Procedure_Notes_All")
+    )
+
     primary_procs = (
         ranked_procs
         .sort_values(
@@ -130,7 +158,10 @@ def _aggregate_case_procedures(matched_procs: DataFrame) -> DataFrame:
             ),
         )
     )
-    proc_agg_columns = ["MPOG_Case_ID", "Airway_Type"]
+    primary_procs = primary_procs.merge(
+        all_procedure_text, on="MPOG_Case_ID", how="left"
+    )
+    proc_agg_columns = ["MPOG_Case_ID", "Airway_Type", "Procedure_Notes_All"]
     if primary_procs["Airway_Details"].notna().any():
         proc_agg_columns.append("Airway_Details")
     return primary_procs.loc[:, proc_agg_columns]
@@ -451,6 +482,8 @@ def join_case_and_procedures(
         result["Airway_Type"] = pd.NA
     if "Airway_Details" not in result.columns:
         result["Airway_Details"] = pd.NA
+    if "Procedure_Notes_All" not in result.columns:
+        result["Procedure_Notes_All"] = pd.NA
     logger.info(
         "Joined %d cases with procedures (%d cases without procedures)",
         len(result),
@@ -537,6 +570,7 @@ class CsvHandler:
                 "AIMS_Scheduled_DT": column_map.date,
                 "AIMS_Patient_Age_Years": column_map.age,
                 "ASA_Status": column_map.asa,
+                "Emergency": column_map.emergent,
                 "AIMS_Actual_Procedure_Text": column_map.procedure,
                 "Airway_Type": column_map.final_anesthesia_type,
             }
@@ -550,11 +584,15 @@ class CsvHandler:
         # CSV v2 airway values carry both anesthesia signal and airway technique hints.
         # Preserve any technique-level note text from the matched ProcedureList row
         # so downstream airway/anesthesia inference can use more than the coarse
-        # ProcedureName label.
+        # ProcedureName label. Procedure_Notes_All additionally carries text from
+        # every ProcedureList row for the case (e.g. arterial line, PA catheter
+        # rows logged alongside a primary airway technique row) so non-primary
+        # techniques still reach extraction.
         if "Airway_Type" in csv_df.columns:
             result[column_map.procedure_notes] = _combine_text_columns(
                 _column_or_default(csv_df, "Airway_Type"),
                 _column_or_default(csv_df, "Airway_Details"),
+                _column_or_default(csv_df, "Procedure_Notes_All"),
             )
 
         # CSV v2 has no Services column — derive from procedure text during processing.

@@ -296,14 +296,17 @@ def _print_summary(summary: EvaluationSummary) -> None:
         ("Medium (0.7-0.85)", summary.medium_confidence),
         ("Low (<0.7)", summary.low_confidence),
     ]
+    total_cases = summary.total_cases or 0
     for level, count in levels:
-        percentage = (count / summary.total_cases) * 100
+        percentage = (count / total_cases) * 100 if total_cases else 0.0
         table.add_row(level, str(count), f"{percentage:.1f}%")
 
     console.print("\n[bold]Evaluation Results:[/bold]\n")
     console.print(table)
 
-    agreement_pct = (summary.agreement_count / summary.total_cases) * 100
+    agreement_pct = (
+        (summary.agreement_count / total_cases) * 100 if total_cases else 0.0
+    )
     disagreement_count = len(summary.disagreement_cases)
     disagreement_pct = 100 - agreement_pct
     console.print(

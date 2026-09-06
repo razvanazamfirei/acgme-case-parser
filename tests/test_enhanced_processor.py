@@ -103,6 +103,15 @@ class TestDateParsing:
             UTC,
         ]
 
+    def test_prepare_dates_keeps_iso_dates_after_us_dates(self, processor):
+        prepared_dates = processor._prepare_dates(["07/19/2025", "2025-03-04"])
+
+        assert [timestamp.date().isoformat() for timestamp, _ in prepared_dates] == [
+            "2025-07-19",
+            "2025-03-04",
+        ]
+        assert all(not warnings for _timestamp, warnings in prepared_dates)
+
 
 class TestAgeCategorization:
     """Test age categorization functionality."""
@@ -1225,3 +1234,9 @@ class TestProcessDataframeExtended:
         df = processor.cases_to_dataframe(cases)
 
         assert list(df.columns) == OUTPUT_COLUMNS
+
+    def test_cases_to_dataframe_empty_keeps_output_columns(self, processor):
+        df = processor.cases_to_dataframe([])
+
+        assert list(df.columns) == OUTPUT_COLUMNS
+        assert df.empty

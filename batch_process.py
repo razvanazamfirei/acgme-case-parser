@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.12"
+# requires-python = ">=3.13"
 # dependencies = [
 #   "pandas>=3.0.1",
 #   "rich>=14.3.3",
@@ -109,7 +109,39 @@ def find_resident_pairs(case_dir: Path, proc_dir: Path) -> list[tuple[str, Path,
         proc_files[key] = f
 
     common = sorted(set(case_files) & set(proc_files))
+    unpaired_case = sorted(set(case_files) - set(proc_files))
+    unpaired_proc = sorted(set(proc_files) - set(case_files))
+    if unpaired_case or unpaired_proc:
+        logger.warning(
+            "Found unpaired files - CaseList: %s, ProcedureList: %s",
+            unpaired_case,
+            unpaired_proc,
+        )
+        console.print(
+            "[yellow]Warning:[/yellow] unpaired resident files were skipped: "
+            f"CaseList {unpaired_case or '[]'}, "
+            f"ProcedureList {unpaired_proc or '[]'}"
+        )
     return [(name, case_files[name], proc_files[name]) for name in common]
+
+
+def _formatted_output_name(case_file: Path) -> str:
+    """Return the display name used for a resident's output folder and files."""
+    return format_name(case_file.name.removesuffix(".CaseList.csv"))
+
+
+def _check_output_name_collisions(pairs: list[tuple[str, Path, Path]]) -> None:
+    """Raise when two distinct pairs would write to the same output folder."""
+    seen: dict[str, Path] = {}
+    for _key, case_file, _proc_file in pairs:
+        formatted = _formatted_output_name(case_file)
+        previous = seen.get(formatted)
+        if previous is not None:
+            raise ValueError(
+                f"Output name {formatted!r} collides for "
+                f"{previous.name!r} and {case_file.name!r}"
+            )
+        seen[formatted] = case_file
 
 
 def _resident_output_dir(base_output_dir: Path, resident_name: str) -> Path:
@@ -131,9 +163,10 @@ def _write_standalone_exports(
     written_files: list[str] = []
     written_case_count = 0
     for spec, export_cases in iter_standalone_case_exports(orphan_cases):
-        if not export_cases:
-            continue
         output_path = output_dir / f"{resident_name}_{spec.suffix}.xlsx"
+        if not export_cases:
+            output_path.unlink(missing_ok=True)
+            continue
         excel_handler.write_excel(
             processor.procedures_to_dataframe(export_cases),
             output_path,
@@ -152,11 +185,13 @@ def process_resident(
     config: ProcessConfig,
 ) -> tuple[int, tuple[str, int, list[str]] | None]:
     """Process one resident pair and write case-log and orphan outputs."""
-    name, case_file, proc_file = pairs
+    _, case_file, proc_file = pairs
     processor = _get_worker_processor(config.columns, config.use_ml)
-    stable_name = name  # Stable key from find_resident_pairs
-    formatted_name = format_name(name)
-    resident_output_dir = _resident_output_dir(config.output_dir, stable_name)
+    # sort_logs.py matches resident output folders/files against a plain
+    # "First Last" names list. Preserve the source filename's order here:
+    # find_resident_pairs normalizes its matching key, which loses that order.
+    formatted_name = _formatted_output_name(case_file)
+    resident_output_dir = _resident_output_dir(config.output_dir, formatted_name)
     joined, orphans = join_case_and_procedures(
         pd.read_csv(case_file),
         pd.read_csv(proc_file),
@@ -171,7 +206,7 @@ def process_resident(
             processor=processor,
             excel_handler=config.excel_handler,
             output_dir=resident_output_dir,
-            resident_name=stable_name,
+            resident_name=formatted_name,
             orphan_cases=orphan_cases,
         )
         if written_files:
@@ -189,7 +224,7 @@ def process_resident(
 
     config.excel_handler.write_excel(
         processor.cases_to_dataframe(parsed_cases),
-        resident_output_dir / f"{stable_name}_all_cases.xlsx",
+        resident_output_dir / f"{formatted_name}_all_cases.xlsx",
         options=ExcelWriteOptions(
             fixed_widths={"Original Procedure": 12},
             format_type=FORMAT_TYPE_CASELOG,
@@ -320,6 +355,12 @@ def main() -> None:
     if not pairs:
         console.print("[yellow]Warning:[/yellow] No matching resident file pairs found")
         sys.exit(0)
+
+    try:
+        _check_output_name_collisions(pairs)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
 
     console.print(
         f"Found [cyan]{len(pairs)}[/cyan] residents with both case and procedure files"

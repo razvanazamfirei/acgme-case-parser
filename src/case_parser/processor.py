@@ -800,6 +800,22 @@ class CaseProcessor:
             logger.exception("Error processing row: %s", e)
             return self._build_error_case(f"Failed to process row: {e!s}")
 
+    @staticmethod
+    def _format_asa_value(value: Scalar) -> str:
+        """Render an ASA value as a string, dropping float artifacts like '.0'.
+
+        A CaseList CSV column with any blank ASA value gets upcast to
+        float64 by pandas, turning otherwise-integer values like 3 into 3.0
+        for every row in that file.
+        """
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if numeric.is_integer():
+            return str(int(numeric))
+        return str(value)
+
     def _parse_asa_fields(
         self,
         row: Mapping[Hashable, Scalar],
@@ -808,7 +824,7 @@ class CaseProcessor:
         # Handle ASA with emergent flag
         warnings: list[str] = []
         raw_asa = row.get(self.column_map.asa)
-        asa_str = "" if is_missing_scalar(raw_asa) else str(raw_asa)
+        asa_str = "" if is_missing_scalar(raw_asa) else self._format_asa_value(raw_asa)
         emergent = self.normalize_emergent_flag(row.get(self.column_map.emergent))
 
         if emergent and "E" not in asa_str.upper():
@@ -871,7 +887,9 @@ class CaseProcessor:
 
         series = pd.Series(values, dtype="object")
         missing_mask = series.isna()
-        parsed = pd.to_datetime(series, errors="coerce")
+        # Parse each value independently. A single inferred format for the
+        # whole series drops ISO dates when an earlier row is MM/DD/YYYY.
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed")
 
         unparsed_mask = (~missing_mask) & parsed.isna()
         if unparsed_mask.any():
@@ -1072,7 +1090,7 @@ class CaseProcessor:
         """
         output_rows = [case.to_output_dict() for case in cases]
         df = pd.DataFrame(output_rows)
-        return df[OUTPUT_COLUMNS]
+        return df.reindex(columns=OUTPUT_COLUMNS)
 
     @staticmethod
     def procedures_to_dataframe(cases: list[ParsedCase]) -> pd.DataFrame:

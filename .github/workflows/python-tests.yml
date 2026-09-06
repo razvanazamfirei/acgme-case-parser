@@ -9,6 +9,11 @@ on:
       - "codecov.yaml"
       - "src/**"
       - "tests/**"
+      - "ml_training/**"
+      - "batch_process.py"
+      - "sort_logs.py"
+      - "list_attendings.py"
+      - "main.py"
   push:
     branches:
       - main
@@ -19,6 +24,11 @@ on:
       - "codecov.yaml"
       - "src/**"
       - "tests/**"
+      - "ml_training/**"
+      - "batch_process.py"
+      - "sort_logs.py"
+      - "list_attendings.py"
+      - "main.py"
 
 jobs:
   tests:

@@ -13,6 +13,17 @@ _OBSTETRIC_CATEGORIES = {
     ProcedureCategory.CESAREAN,
     ProcedureCategory.VAGINAL_DELIVERY,
 }
+_CARDIAC_BLOCK_PATTERN = re.compile(
+    r"\b(?:complete\s+|high\s+|first[-\s]degree\s+|second[-\s]degree\s+|"
+    r"third[-\s]degree\s+)?"
+    r"(?:heart|av|bundle(?:\s+branch)?|branch|atrioventricular|sinoatrial|"
+    r"bifascicular|trifascicular)\s+block\b",
+    re.IGNORECASE,
+)
+_BLOCK_PATTERN = re.compile(
+    r"\b(PERIPHERAL NERVE BLOCK|NERVE BLOCK|BLOCK)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -56,9 +67,10 @@ def _standalone_case_search_text(case: ParsedCase) -> str:
 def is_block_standalone_case(case: ParsedCase) -> bool:
     """Return True when standalone procedure text indicates a block technique."""
     search_text = _standalone_case_search_text(case)
-    # Use word boundaries to avoid false positives like "HEART BLOCK"
-    pattern = r"\b(PERIPHERAL NERVE BLOCK|NERVE BLOCK|BLOCK)\b"
-    return bool(re.search(pattern, search_text, re.IGNORECASE))
+    # Strip cardiac conduction-block phrases so "heart block" does not
+    # route a labor epidural into the blocks workbook.
+    block_search_text = _CARDIAC_BLOCK_PATTERN.sub(" ", search_text)
+    return bool(_BLOCK_PATTERN.search(block_search_text))
 
 
 def _normalized_block_terms(case: ParsedCase) -> set[str]:

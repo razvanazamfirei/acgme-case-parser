@@ -50,9 +50,19 @@ def clean_names(name: Scalar | None) -> str:
         return ""
     # Take only the first attending if multiple are listed
     name = str(name).split(";")[0].strip()
-    # Remove titles
-    name = re.sub(r"\b(MD|DO|PhD|CRNA|RN)\b", "", name, flags=re.IGNORECASE).strip()
-    # Remove trailing commas and extra whitespace
+    name = re.sub(r",\s*$", "", name).strip()
+    # Strip trailing credentials only. A leading "DO," is a surname, not a title.
+    credential_match = re.search(
+        r"[\s,]+(\b(?:MD|DO|PhD|CRNA|RN)\b)\.?\s*$",
+        name,
+        flags=re.IGNORECASE,
+    )
+    if credential_match:
+        before = name[: credential_match.start()].rstrip(" ,")
+        prior_parts = [part for part in re.split(r"[\s,]+", before) if part]
+        # Keep "NGUYEN, DO" where DO is the only given name.
+        if not (len(prior_parts) == 1 and credential_match.group(1).casefold() == "do"):
+            name = before
     name = re.sub(r",\s*$", "", name).strip()
     return re.sub(r"\s+", " ", name)
 

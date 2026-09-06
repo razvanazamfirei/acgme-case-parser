@@ -449,11 +449,12 @@ def _write_standalone_output(
     spec: StandaloneOutputSpec,
 ) -> None:
     """Write one standalone orphan-procedure workbook when rows are present."""
+    standalone_path = output_path.with_stem(f"{output_path.stem}_{spec.suffix}")
     if not cases:
+        standalone_path.unlink(missing_ok=True)
         return
 
     standalone_output = processor.procedures_to_dataframe(cases)
-    standalone_path = output_path.with_stem(f"{output_path.stem}_{spec.suffix}")
     excel_handler.write_excel(
         standalone_output,
         standalone_path,

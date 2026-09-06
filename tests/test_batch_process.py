@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 import pandas as pd
+import pytest
 
 import batch_process
 
@@ -91,6 +92,57 @@ def test_find_resident_pairs_matches_non_supervised_suffixes(tmp_path):
     ]
 
 
+def test_find_resident_pairs_normalizes_supervised_first_last_suffixes(tmp_path):
+    case_dir = tmp_path / "case-list"
+    proc_dir = tmp_path / "procedure-list"
+    case_dir.mkdir()
+    proc_dir.mkdir()
+
+    case_file = case_dir / "Gabriel.Supervised_Zuckerberg.CaseList.csv"
+    proc_file = proc_dir / "Gabriel.Supervised_Zuckerberg.ProcedureList.csv"
+    case_file.write_text("case")
+    proc_file.write_text("proc")
+
+    assert batch_process.find_resident_pairs(case_dir, proc_dir) == [
+        ("GABRIEL_ZUCKERBERG", case_file, proc_file)
+    ]
+
+
+def test_find_resident_pairs_warns_on_unpaired_files(tmp_path, capsys):
+    case_dir = tmp_path / "case-list"
+    proc_dir = tmp_path / "procedure-list"
+    case_dir.mkdir()
+    proc_dir.mkdir()
+    (case_dir / "DOE_JANE.CaseList.csv").write_text("case")
+    (proc_dir / "DOE_JANE.ProcedureList.csv").write_text("proc")
+    (case_dir / "SMITH_JOHN.CaseList.csv").write_text("case-only")
+
+    pairs = batch_process.find_resident_pairs(case_dir, proc_dir)
+
+    assert [name for name, _case, _proc in pairs] == ["DOE_JANE"]
+    assert "unpaired resident files were skipped" in capsys.readouterr().out
+
+
+def test_check_output_name_collisions_detects_format_name_overlap(tmp_path):
+    case_dir = tmp_path / "case-list"
+    proc_dir = tmp_path / "procedure-list"
+    case_dir.mkdir()
+    proc_dir.mkdir()
+    first_case = case_dir / "Smith, John.CaseList.csv"
+    first_proc = proc_dir / "Smith, John.ProcedureList.csv"
+    second_case = case_dir / "SMITH_JOHN.CaseList.csv"
+    second_proc = proc_dir / "SMITH_JOHN.ProcedureList.csv"
+    for path in (first_case, first_proc, second_case, second_proc):
+        path.write_text("x")
+
+    pairs = [
+        ("SMITH_ JOHN", first_case, first_proc),
+        ("SMITH_JOHN", second_case, second_proc),
+    ]
+    with pytest.raises(ValueError, match="John Smith"):
+        batch_process._check_output_name_collisions(pairs)
+
+
 def test_format_name_handles_supervised_last_comma_first():
     assert (
         batch_process.format_name("ZUCKERBERG, GABRIEL.Supervised")
@@ -162,23 +214,32 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
             ),
         ),
     ):
+        case_dir = tmp_path / "case-list"
+        proc_dir = tmp_path / "procedure-list"
+        case_dir.mkdir()
+        proc_dir.mkdir()
+        case_file = case_dir / "Gabriel.Supervised_Zuckerberg.CaseList.csv"
+        proc_file = proc_dir / "Gabriel.Supervised_Zuckerberg.ProcedureList.csv"
+        case_file.touch()
+        proc_file.touch()
+        (pair,) = batch_process.find_resident_pairs(case_dir, proc_dir)
         case_count, orphan_notice = batch_process.process_resident(
-            ("DOE_JANE", Path("case.csv"), Path("proc.csv")),
+            pair,
             config,
         )
 
-    resident_dir = config.output_dir / "DOE_JANE"
+    resident_dir = config.output_dir / "Gabriel Zuckerberg"
     assert case_count == 1
     assert orphan_notice == (
-        "Jane Doe",
+        "Gabriel Zuckerberg",
         2,
-        ["DOE_JANE_blocks.xlsx", "DOE_JANE_ob.xlsx"],
+        ["Gabriel Zuckerberg_blocks.xlsx", "Gabriel Zuckerberg_ob.xlsx"],
     )
     assert resident_dir.is_dir()
     assert config.excel_handler.write_excel.call_args_list == [
         call(
             processor.procedures_to_dataframe.return_value,
-            resident_dir / "DOE_JANE_blocks.xlsx",
+            resident_dir / "Gabriel Zuckerberg_blocks.xlsx",
             options=batch_process.ExcelWriteOptions(
                 format_type=batch_process.FORMAT_TYPE_STANDALONE,
                 version=batch_process.STANDALONE_OUTPUT_FORMAT_VERSION,
@@ -186,7 +247,7 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
         ),
         call(
             processor.procedures_to_dataframe.return_value,
-            resident_dir / "DOE_JANE_ob.xlsx",
+            resident_dir / "Gabriel Zuckerberg_ob.xlsx",
             options=batch_process.ExcelWriteOptions(
                 format_type=batch_process.FORMAT_TYPE_STANDALONE,
                 version=batch_process.STANDALONE_OUTPUT_FORMAT_VERSION,
@@ -194,7 +255,7 @@ def test_process_resident_writes_person_folder_and_split_standalone_outputs(tmp_
         ),
         call(
             processor.cases_to_dataframe.return_value,
-            resident_dir / "DOE_JANE_all_cases.xlsx",
+            resident_dir / "Gabriel Zuckerberg_all_cases.xlsx",
             options=batch_process.ExcelWriteOptions(
                 fixed_widths={"Original Procedure": 12},
                 format_type=batch_process.FORMAT_TYPE_CASELOG,

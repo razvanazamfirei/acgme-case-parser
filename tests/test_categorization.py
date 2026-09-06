@@ -350,3 +350,32 @@ def test_normalize_services_scalar_missing_returns_empty_tuple():
     assert _normalize_services(None) == ()
     assert _normalize_services(pd.NA) == ()
     assert _normalize_services(np.nan) == ()
+
+
+def test_av_fistula_is_not_intracerebral():
+    category, _warnings = categorize_procedure(
+        "ARTERIOVENOUS FISTULA CREATION",
+        services=[],
+    )
+    assert category != ProcedureCategory.INTRACEREBRAL_NONVASCULAR_OPEN
+    assert category != ProcedureCategory.INTRACEREBRAL_VASCULAR_OPEN
+    assert category != ProcedureCategory.INTRACEREBRAL_ENDOVASCULAR
+
+
+def test_cerebral_avm_stays_intracerebral():
+    category, _warnings = categorize_procedure(
+        "CEREBRAL ARTERIOVENOUS MALFORMATION",
+        services=[],
+    )
+    assert category == ProcedureCategory.INTRACEREBRAL_NONVASCULAR_OPEN
+
+
+def test_deep_vein_thrombectomy_is_not_excluded_by_ep_substring():
+    category, _warnings = categorize_procedure(
+        "DEEP VEIN THROMBECTOMY",
+        services=[],
+    )
+    assert category in {
+        ProcedureCategory.MAJOR_VESSELS_OPEN,
+        ProcedureCategory.MAJOR_VESSELS_ENDOVASCULAR,
+    }

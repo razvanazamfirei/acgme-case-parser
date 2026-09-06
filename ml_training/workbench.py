@@ -19,6 +19,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from case_parser.ml.config import DEFAULT_ML_THRESHOLD
+from case_parser.ml.inputs import coerce_service_text, resolve_service_column
 from case_parser.ml.predictor import MLPredictor
 from case_parser.patterns.categorization import categorize_procedure
 
@@ -539,8 +540,10 @@ def _resolve_procedure_column(df: pd.DataFrame) -> str:
     )
 
 
-def _rule_prediction_for_procedure(procedure: str) -> str:
-    rule_category, _warnings = categorize_procedure(procedure, [])
+def _rule_prediction_for_procedure(
+    procedure: str, services: list[str] | None = None
+) -> str:
+    rule_category, _warnings = categorize_procedure(procedure, services or [])
     if rule_category is None:
         return "Other (procedure cat)"
     return normalize_category_label(rule_category.value)
@@ -559,12 +562,11 @@ def _top_predictions(
 def _build_review_case(
     index: int,
     procedure: str,
-    ml_prediction_raw: Any,
-    ml_probability_row: Sequence[float],
-    classes: Sequence[Any],
+    ml_result: tuple[Any, Sequence[float], Sequence[Any]],
+    rule_prediction: str,
 ) -> ReviewCase:
+    ml_prediction_raw, ml_probability_row, classes = ml_result
     ml_prediction = normalize_category_label(str(ml_prediction_raw))
-    rule_prediction = _rule_prediction_for_procedure(procedure)
     top_predictions = _top_predictions(classes, ml_probability_row)
     ml_confidence = float(max(ml_probability_row))
 
@@ -608,6 +610,15 @@ def _load_review_cases(
     procedure_col = _resolve_procedure_column(df)
 
     procedures = df[procedure_col].fillna("").astype(str).tolist()
+    service_col = resolve_service_column(df)
+    service_rows: list[list[str]] = []
+    if service_col is None:
+        service_rows = [[] for _ in procedures]
+    else:
+        service_rows = [
+            [item for item in coerce_service_text(value).split("\n") if item]
+            for value in df[service_col].tolist()
+        ]
     ml_predictions = predictor.pipeline.predict(procedures)
     ml_probabilities = predictor.pipeline.predict_proba(procedures)
     classes = list(predictor.pipeline.classes_)
@@ -621,9 +632,10 @@ def _load_review_cases(
         case = _build_review_case(
             index=int(idx),
             procedure=procedure,
-            ml_prediction_raw=ml_predictions[idx],
-            ml_probability_row=ml_probabilities[idx],
-            classes=classes,
+            ml_result=(ml_predictions[idx], ml_probabilities[idx], classes),
+            rule_prediction=_rule_prediction_for_procedure(
+                procedure, service_rows[idx]
+            ),
         )
         if _should_include_case(case, config.focus, config.low_confidence):
             cases.append(case)

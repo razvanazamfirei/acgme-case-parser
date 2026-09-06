@@ -305,3 +305,16 @@ def test_main_returns_clean_error_code_for_value_error(
     assert any(
         "Label column not found: missing_label" in message for message in printed
     )
+
+
+def test_print_summary_handles_empty_evaluation():
+    summary = evaluate.EvaluationSummary(
+        total_cases=0,
+        high_confidence=0,
+        medium_confidence=0,
+        low_confidence=0,
+        agreement_count=0,
+        disagreement_cases=[],
+    )
+
+    evaluate._print_summary(summary)

@@ -253,8 +253,8 @@ r"\bradial\s+(artery|arterial|line)\b"
 # Bad: Matches "mask" in "face mask" when you want only LMA
 r"""\bmask\b"""
 
-# Good: Excludes LMA
-r"\bmask\b(?!.*\bLMA\b)"
+# Good: Require ventilation context so "laryngeal mask" is not Mask
+r"(?<!laryngeal\s)\bmask\s+vent(ilation)?\b"
 ```
 
 **Missing abbreviations:**
