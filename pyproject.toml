@@ -28,7 +28,7 @@ scripts.case-parser = "case_parser.cli:main"
 
 [dependency-groups]
 dev = [
-  "pandas-stubs~=3.0.0",
+  "pandas-stubs>=3.0,<3.2",
   "pytest>=9.0.3",
   "pytest-cov>=6.1.1",
   "ruff>=0.15.5",
